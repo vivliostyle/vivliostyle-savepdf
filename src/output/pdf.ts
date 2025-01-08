@@ -1,201 +1,54 @@
-import chalk from 'chalk';
 import fs from 'node:fs';
 import { URL } from 'node:url';
 import { Page } from 'playwright-core';
 import terminalLink from 'terminal-link';
 import upath from 'upath';
+import { cyan, gray, green, red } from 'yoctocolors';
+import { getFullBrowserName, launchPreview } from '../browser.js';
 import {
-  checkBrowserAvailability,
-  downloadBrowser,
-  getFullBrowserName,
-  isPlaywrightExecutable,
-  launchBrowser,
-} from '../browser.js';
-import {
-  collectVolumeArgs,
-  runContainer,
-  toContainerPath,
-} from '../container.js';
+  ManuscriptEntry,
+  PdfOutput,
+  ResolvedTaskConfig,
+} from '../config/resolve.js';
 import { Meta, Payload, TOCItem } from '../global-viewer.js';
-import { ManuscriptEntry, MergedConfig } from '../input/config.js';
-import { prepareServer } from '../server.js';
-import {
-  checkContainerEnvironment,
-  debug,
-  logError,
-  logInfo,
-  logSuccess,
-  logUpdate,
-  pathEquals,
-  startLogging,
-} from '../util.js';
-import type { PdfOutput } from './output-types.js';
+import { Logger } from '../logger.js';
+import { getViewerFullUrl } from '../server.js';
+import { pathEquals } from '../util.js';
 import { PageSizeData, PostProcess } from './pdf-postprocess.js';
 
-export type BuildPdfOptions = Omit<MergedConfig, 'outputs' | 'input'> & {
-  input: string;
-  target: PdfOutput;
-};
-
-export async function buildPDFWithContainer(
-  option: BuildPdfOptions,
-): Promise<string | null> {
-  const bypassedOption = {
-    ...option,
-    input: toContainerPath(option.input),
-    target: {
-      ...option.target,
-      path: toContainerPath(option.target.path),
-    },
-    entryContextDir: toContainerPath(option.entryContextDir),
-    workspaceDir: toContainerPath(option.workspaceDir),
-    customStyle: option.customStyle && toContainerPath(option.customStyle),
-    customUserStyle:
-      option.customUserStyle && toContainerPath(option.customUserStyle),
-    sandbox: false,
-  };
-
-  await runContainer({
-    image: option.image,
-    userVolumeArgs: collectVolumeArgs([
-      option.workspaceDir,
-      upath.dirname(option.target.path),
-    ]),
-    commandArgs: [
-      'build',
-      '--bypassed-pdf-builder-option',
-      JSON.stringify(bypassedOption),
-    ],
-  });
-
-  return option.target.path;
-}
-
 export async function buildPDF({
-  input,
   target,
-  workspaceDir,
-  size,
-  cropMarks,
-  bleed,
-  cropOffset,
-  css,
-  customStyle,
-  customUserStyle,
-  singleDoc,
-  executableBrowser,
-  proxy,
-  browserType,
-  image,
-  sandbox,
-  timeout,
-  entryContextDir,
-  entries,
-  httpServer,
-  viewer,
-  viewerParam,
-  logLevel,
-  ignoreHttpsErrors,
-}: BuildPdfOptions): Promise<string | null> {
-  const isInContainer = checkContainerEnvironment();
-  logUpdate(`Launching build environment`);
+  config,
+}: {
+  target: PdfOutput;
+  config: ResolvedTaskConfig;
+}): Promise<string | null> {
+  Logger.logUpdate(`Launching PDF build environment`);
 
-  const { viewerFullUrl } = await prepareServer({
-    input,
-    workspaceDir,
-    httpServer,
-    viewer,
-    viewerParam,
-    size,
-    cropMarks,
-    bleed,
-    cropOffset,
-    css,
-    style: customStyle,
-    userStyle: customUserStyle,
-    singleDoc,
-    quick: false,
-  });
-  debug('viewerFullUrl', viewerFullUrl);
-
-  debug(`Executing browser path: ${executableBrowser}`);
-  if (!checkBrowserAvailability(executableBrowser)) {
-    if (isPlaywrightExecutable(executableBrowser)) {
-      // The browser isn't downloaded first time starting CLI so try to download it
-      await downloadBrowser(browserType);
-    } else {
-      // executableBrowser seems to be specified explicitly
-      throw new Error(
-        `Cannot find the browser. Please check the executable browser path: ${executableBrowser}`,
-      );
-    }
-  }
-  const browser = await launchBrowser({
-    browserType,
-    proxy,
-    executablePath: executableBrowser,
-    headless: true,
-    noSandbox: !sandbox,
-    disableWebSecurity: !viewer,
-    disableDevShmUsage: isInContainer,
-  });
-  const browserName = getFullBrowserName(browserType);
-  const browserVersion = `${browserName}/${await browser.version()}`;
-  debug(chalk.green('success'), `browserVersion=${browserVersion}`);
-
-  logUpdate('Building pages');
-
-  const page = await browser.newPage({
-    // This viewport size important to detect headless environment in Vivliostyle viewer
-    // https://github.com/vivliostyle/vivliostyle.js/blob/73bcf323adcad80126b0175630609451ccd09d8a/packages/core/src/vivliostyle/vgen.ts#L2489-L2500
-    viewport: {
-      width: 800,
-      height: 600,
-    },
-    ignoreHTTPSErrors: ignoreHttpsErrors,
-  });
-
-  page.on('pageerror', (error) => {
-    logError(chalk.red(error.message));
-  });
-
-  page.on('console', (msg) => {
-    switch (msg.type()) {
-      case 'error':
-        if (/\/vivliostyle-viewer\.js$/.test(msg.location().url ?? '')) {
-          logError(msg.text());
-          throw msg.text();
-        }
-        return;
-      case 'debug':
-        if (/time slice/.test(msg.text())) {
-          return;
-        }
-        break;
-    }
-    if (logLevel === 'silent' || logLevel === 'info') {
-      return;
-    }
-    if (msg.type() === 'error') {
-      logError(msg.text());
-    } else {
-      logInfo(msg.text());
-    }
-  });
+  const viewerFullUrl = await getViewerFullUrl(config);
+  Logger.debug('viewerFullUrl', viewerFullUrl);
 
   let lastEntry: ManuscriptEntry | undefined;
 
   function stringifyEntry(entry: ManuscriptEntry) {
-    const formattedSourcePath = chalk.bold.cyan(
-      upath.relative(entryContextDir, entry.source),
+    const formattedSourcePath = cyan(
+      entry.source.type === 'file'
+        ? upath.relative(config.entryContextDir, entry.source.pathname)
+        : entry.source.href,
     );
-    return `${terminalLink(formattedSourcePath, 'file://' + entry.source, {
-      fallback: () => formattedSourcePath,
-    })} ${entry.title ? chalk.gray(entry.title) : ''}`;
+    return `${terminalLink(
+      formattedSourcePath,
+      entry.source.type === 'file'
+        ? `file://${entry.source.pathname}`
+        : entry.source.href,
+      {
+        fallback: () => formattedSourcePath,
+      },
+    )} ${entry.title ? gray(entry.title) : ''}`;
   }
 
   function handleEntry(response: any) {
-    const entry = entries.find((entry): entry is ManuscriptEntry => {
+    const entry = config.entries.find((entry): entry is ManuscriptEntry => {
       if (!('source' in entry)) {
         return false;
       }
@@ -203,44 +56,83 @@ export async function buildPDF({
       return url.protocol === 'file:'
         ? pathEquals(entry.target, url.pathname)
         : pathEquals(
-            upath.relative(workspaceDir, entry.target),
+            upath.relative(config.workspaceDir, entry.target),
             url.pathname.substring(1),
           );
     });
     if (entry) {
       if (!lastEntry) {
         lastEntry = entry;
-        return logUpdate(stringifyEntry(entry));
+        Logger.logUpdate(stringifyEntry(entry));
+        return;
       }
-      logSuccess(stringifyEntry(lastEntry));
-      startLogging(stringifyEntry(entry));
+      Logger.logSuccess(stringifyEntry(lastEntry));
+      Logger.startLogging(stringifyEntry(entry));
       lastEntry = entry;
     }
   }
 
-  page.on('response', (response) => {
-    debug(
-      chalk.gray('viewer:response'),
-      chalk.green(response.status().toString()),
-      response.url(),
-    );
+  const { browser, page } = await launchPreview({
+    mode: 'build',
+    url: viewerFullUrl,
+    config,
+    onBrowserOpen: () => {
+      Logger.logUpdate('Building pages');
+    },
+    onPageOpen: async (page) => {
+      page.on('pageerror', (error) => {
+        Logger.logError(red(error.message));
+      });
 
-    handleEntry(response);
+      page.on('console', (msg) => {
+        switch (msg.type()) {
+          case 'error':
+            if (/\/vivliostyle-viewer\.js$/.test(msg.location().url ?? '')) {
+              Logger.logError(msg.text());
+              throw msg.text();
+            }
+            return;
+          case 'debug':
+            if (/time slice/.test(msg.text())) {
+              return;
+            }
+            break;
+        }
+        if (msg.type() === 'error') {
+          Logger.logVerbose(red('console.error()'), msg.text());
+        } else {
+          Logger.logVerbose(gray(`console.${msg.type()}()`), msg.text());
+        }
+      });
 
-    if (300 > response.status() && 200 <= response.status()) return;
-    // file protocol doesn't have status code
-    if (response.url().startsWith('file://') && response.ok()) return;
+      page.on('response', (response) => {
+        Logger.debug(
+          gray('viewer:response'),
+          green(response.status().toString()),
+          response.url(),
+        );
 
-    logError(chalk.red(`${response.status()}`, response.url()));
-    startLogging();
-    // debug(chalk.red(`${response.status()}`, response.url()));
+        handleEntry(response);
+
+        if (300 > response.status() && 200 <= response.status()) return;
+        // file protocol doesn't have status code
+        if (response.url().startsWith('file://') && response.ok()) return;
+
+        Logger.logError(red(`${response.status()}`), response.url());
+      });
+
+      await page.setDefaultTimeout(config.timeout);
+    },
   });
 
-  let remainTime = timeout;
+  const browserName = getFullBrowserName(config.browserType);
+  const browserVersion = `${browserName}/${await browser.version()}`;
+  Logger.debug(green('success'), `browserVersion=${browserVersion}`);
+
+  let remainTime = config.timeout;
   const startTime = Date.now();
 
-  await page.setDefaultTimeout(timeout);
-  await page.goto(viewerFullUrl, { waitUntil: 'networkidle' });
+  await page.waitForLoadState('networkidle');
   await page.waitForFunction(() => !!window.coreViewer);
 
   await page.emulateMedia({ media: 'print' });
@@ -252,7 +144,7 @@ export async function buildPDF({
   );
 
   if (lastEntry) {
-    logSuccess(stringifyEntry(lastEntry));
+    Logger.logSuccess(stringifyEntry(lastEntry));
   }
 
   const pageProgression = await page.evaluate(() =>
@@ -277,9 +169,9 @@ export async function buildPDF({
   if (remainTime <= 0) {
     throw new Error('Typesetting process timed out');
   }
-  debug('Remaining timeout:', remainTime);
+  Logger.debug('Remaining timeout:', remainTime);
 
-  logUpdate('Building PDF');
+  Logger.logUpdate('Building PDF');
 
   const pdf = await page.pdf({
     margin: {
@@ -296,7 +188,7 @@ export async function buildPDF({
 
   await browser.close();
 
-  logUpdate('Processing PDF');
+  Logger.logUpdate('Processing PDF');
   fs.mkdirSync(upath.dirname(target.path), { recursive: true });
 
   const post = await PostProcess.load(pdf);
@@ -306,14 +198,14 @@ export async function buildPDF({
     viewerCoreVersion,
     // If custom viewer is set and its version info is not available,
     // there is no guarantee that the default creator option is correct.
-    disableCreatorOption: !!viewer && !viewerCoreVersion,
+    disableCreatorOption: !!config.viewer && !viewerCoreVersion,
   });
   await post.toc(toc);
   await post.setPageBoxes(pageSizeData);
   await post.save(target.path, {
     preflight: target.preflight,
     preflightOption: target.preflightOption,
-    image,
+    image: config.image,
   });
 
   return target.path;

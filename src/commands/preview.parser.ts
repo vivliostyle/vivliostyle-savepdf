@@ -7,7 +7,7 @@ export function setupPreviewParserProgram(): Command {
     .description('launch preview server')
     .arguments('[input]')
     .option('-c, --config <config_file>', 'path to vivliostyle.config.js')
-    .option('-T, --theme <theme>', 'theme path or package name')
+    .option('-T, --theme <theme...>', 'theme path or package name')
     .option(
       '-s, --size <size>',
       `output pdf size
@@ -47,11 +47,6 @@ custom(comma separated): 182mm,257mm or 8.5in,11in`,
     .option(
       '--executable-browser <path>',
       'specify a path of executable browser you installed',
-    )
-    .option(
-      '--http',
-      `launch an HTTP server hosting contents instead of file protocol
-It is useful that requires CORS such as external web fonts.`,
     )
     .option(
       '--viewer <URL>',
@@ -107,8 +102,12 @@ Currently, Firefox and Webkit support preview command only!`,
         `true to ignore HTTPS errors when Playwright browser opens a new page`,
       ),
     )
+    .option('--no-open-viewer', 'do not open viewer')
+    .option('--no-enable-static-serve', 'disable static file serving')
+    .option('--no-enable-viewer-start-page', 'disable viewer start page')
     // TODO: Remove it in the next major version up
     .addOption(new Option('--executable-chromium <path>').hideHelp())
-    .addOption(new Option('--verbose').hideHelp());
+    .addOption(new Option('--verbose').hideHelp())
+    .addOption(new Option('--http').hideHelp());
   return program;
 }

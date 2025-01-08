@@ -1,31 +1,40 @@
+import jsdom, { JSDOM } from '@vivliostyle/jsdom';
 import { copy, move, remove } from 'fs-extra/esm';
 import fs from 'node:fs';
+import picomatch from 'picomatch';
+import prettier from 'prettier';
 import { glob } from 'tinyglobby';
 import upath from 'upath';
+import MIMEType from 'whatwg-mimetype';
 import {
   ContentsEntry,
   CoverEntry,
   ManuscriptEntry,
-  MergedConfig,
+  ParsedEntry,
   ParsedTheme,
+  ResolvedTaskConfig,
   WebPublicationManifestConfig,
-} from '../input/config.js';
-import type { ArticleEntryObject } from '../input/schema.js';
+} from '../config/resolve.js';
+import type { ArticleEntryConfig } from '../config/schema.js';
+import { Logger } from '../logger.js';
 import { writePublicationManifest } from '../output/webbook.js';
 import {
-  DetailError,
   beforeExitHandlers,
-  debug,
+  DetailError,
   pathContains,
   pathEquals,
-  startLogging,
+  writeFileIfChanged,
 } from '../util.js';
 import {
+  createVirtualConsole,
   generateDefaultCoverHtml,
   generateDefaultTocHtml,
+  getJsdomFromString,
+  getJsdomFromUrlOrFile,
   processCoverHtml,
   processManuscriptHtml,
   processTocHtml,
+  ResourceLoader,
 } from './html.js';
 import { processMarkdown } from './markdown.js';
 import {
@@ -63,7 +72,7 @@ function locateThemePath(theme: ParsedTheme, from: string): string | string[] {
     if (!maybeStyle) {
       throw new DetailError(
         `Could not find a style file for the theme: ${theme.name}.`,
-        'Please ensure this package satisfies a `vivliostyle.theme.style` propertiy.',
+        'Please ensure this package satisfies a `vivliostyle.theme.style` property.',
       );
     }
     return upath.relative(from, upath.join(theme.location, maybeStyle));
@@ -74,7 +83,7 @@ export async function cleanupWorkspace({
   entryContextDir,
   workspaceDir,
   themesDir,
-}: MergedConfig) {
+}: ResolvedTaskConfig) {
   if (
     pathEquals(workspaceDir, entryContextDir) ||
     pathContains(workspaceDir, entryContextDir)
@@ -82,7 +91,7 @@ export async function cleanupWorkspace({
     return;
   }
   // workspaceDir is placed on different directory; delete everything excepting theme files
-  debug('cleanup workspace files', workspaceDir);
+  Logger.debug('cleanup workspace files', workspaceDir);
   let movedWorkspacePath: string | undefined;
   if (pathContains(workspaceDir, themesDir) && fs.existsSync(themesDir)) {
     movedWorkspacePath = upath.join(
@@ -110,10 +119,21 @@ export async function cleanupWorkspace({
 export async function prepareThemeDirectory({
   themesDir,
   themeIndexes,
-}: MergedConfig) {
+}: ResolvedTaskConfig) {
+  // Backward compatibility: v8 to v9
+  if (
+    fs.existsSync(upath.join(themesDir, 'packages')) &&
+    !fs.existsSync(upath.join(themesDir, 'node_modules'))
+  ) {
+    fs.renameSync(
+      upath.join(themesDir, 'packages'),
+      upath.join(themesDir, 'node_modules'),
+    );
+  }
+
   // install theme packages
   if (await checkThemeInstallationNecessity({ themesDir, themeIndexes })) {
-    startLogging('Installing theme files');
+    Logger.startLogging('Installing theme files');
     await installThemeDependencies({ themesDir, themeIndexes });
   }
 
@@ -126,170 +146,247 @@ export async function prepareThemeDirectory({
   }
 }
 
-export async function compile({
+export async function transformManuscript(
+  entry: ParsedEntry,
+  {
+    entryContextDir,
+    workspaceDir,
+    viewerInput: { manifestPath },
+    title,
+    entries,
+    language,
+    documentProcessorFactory,
+    vfmOptions,
+  }: ResolvedTaskConfig & { viewerInput: WebPublicationManifestConfig },
+): Promise<string | undefined> {
+  const source =
+    entry.rel === 'contents' || entry.rel === 'cover'
+      ? (entry as ContentsEntry | CoverEntry).template
+      : (entry as ManuscriptEntry).source;
+  let content: JSDOM | undefined;
+  let resourceLoader: ResourceLoader | undefined;
+
+  // calculate style path
+  const style = entry.themes.flatMap((theme) =>
+    locateThemePath(theme, upath.dirname(entry.target)),
+  );
+
+  if (source?.type === 'file') {
+    if (source.contentType === 'text/markdown') {
+      // compile markdown
+      const vfile = await processMarkdown(
+        documentProcessorFactory,
+        source.pathname,
+        {
+          ...vfmOptions,
+          style,
+          title: entry.title,
+          language: language ?? undefined,
+        },
+      );
+      content = getJsdomFromString({ html: String(vfile) });
+    } else if (
+      source.contentType === 'text/html' ||
+      source.contentType === 'application/xhtml+xml'
+    ) {
+      content = await getJsdomFromUrlOrFile({ src: source.pathname });
+      content = await processManuscriptHtml(content, {
+        style,
+        title: entry.title,
+        contentType: source.contentType,
+        language,
+      });
+    } else {
+      if (!pathEquals(source.pathname, entry.target)) {
+        await copy(source.pathname, entry.target);
+      }
+    }
+  } else if (source?.type === 'uri') {
+    resourceLoader = new ResourceLoader();
+    const virtualConsole = createVirtualConsole(() => {
+      // TODO: handle console messages
+    });
+    try {
+      await getJsdomFromUrlOrFile({
+        src: source.href,
+        resourceLoader,
+        virtualConsole,
+      });
+    } catch (error: any) {
+      throw new DetailError(
+        `Failed to fetch the content from ${source.href}`,
+        error.stack ?? error.message,
+      );
+    }
+
+    const contentFetcher = resourceLoader.fetcherMap.get(source.href);
+    if (contentFetcher) {
+      const buffer = await contentFetcher;
+      const contentType = contentFetcher.response?.headers['content-type'];
+      if (!contentType || new MIMEType(contentType).essence !== 'text/html') {
+        throw new Error(`The content is not an HTML document: ${source.href}`);
+      }
+      content = getJsdomFromString({ html: buffer.toString('utf8') });
+      content = await processManuscriptHtml(content, {
+        style,
+        title: entry.title,
+        contentType: 'text/html',
+        language,
+      });
+    }
+  } else if (entry.rel === 'contents') {
+    content = getJsdomFromString({
+      html: generateDefaultTocHtml({
+        language,
+        title,
+      }),
+    });
+    content = await processManuscriptHtml(content, {
+      style,
+      title,
+      contentType: 'text/html',
+      language,
+    });
+  } else if (entry.rel === 'cover') {
+    content = getJsdomFromString({
+      html: generateDefaultCoverHtml({ language, title: entry.title }),
+    });
+    content = await processManuscriptHtml(content, {
+      style,
+      title: entry.title,
+      contentType: 'text/html',
+      language,
+    });
+  }
+
+  if (!content) {
+    return;
+  }
+
+  if (entry.rel === 'contents') {
+    const contentsEntry = entry as ContentsEntry;
+    const manuscriptEntries = entries.filter(
+      (e): e is ManuscriptEntry => 'source' in e,
+    );
+    content = await processTocHtml(content, {
+      entries: manuscriptEntries,
+      manifestPath,
+      distDir: upath.dirname(contentsEntry.target),
+      tocTitle: contentsEntry.tocTitle,
+      sectionDepth: contentsEntry.sectionDepth,
+      styleOptions: contentsEntry,
+      transform: contentsEntry.transform,
+    });
+  }
+
+  if (entry.rel === 'cover') {
+    const coverEntry = entry as CoverEntry;
+    content = await processCoverHtml(content, {
+      imageSrc: upath.relative(
+        upath.join(
+          entryContextDir,
+          upath.relative(workspaceDir, coverEntry.target),
+          '..',
+        ),
+        coverEntry.coverImageSrc,
+      ),
+      imageAlt: coverEntry.coverImageAlt,
+      styleOptions: coverEntry,
+    });
+  }
+
+  const html = await prettier.format(content.serialize(), { parser: 'html' });
+  const htmlBuffer = Buffer.from(html, 'utf8');
+  if (
+    !source ||
+    (source.type === 'file' && !pathEquals(source.pathname, entry.target))
+  ) {
+    writeFileIfChanged(entry.target, htmlBuffer);
+  }
+
+  if (source?.type === 'uri' && resourceLoader) {
+    const { response } = resourceLoader.fetcherMap.get(source.href)!;
+    const contentFetcher = Promise.resolve(
+      htmlBuffer,
+    ) as jsdom.AbortablePromise<Buffer>;
+    contentFetcher.abort = () => {};
+    contentFetcher.response = response;
+    resourceLoader.fetcherMap.set(source.href, contentFetcher);
+
+    await ResourceLoader.saveFetchedResources({
+      fetcherMap: resourceLoader.fetcherMap,
+      rootUrl: source.href,
+      outputDir: source.rootDir,
+    });
+  }
+
+  return html;
+}
+
+export async function generateManifest({
   entryContextDir,
   workspaceDir,
-  manifestPath,
-  needToGenerateManifest,
+  viewerInput: { manifestPath },
   title,
   author,
   entries,
   language,
   readingProgression,
   cover,
-  documentProcessorFactory,
-  vfmOptions,
-}: MergedConfig & WebPublicationManifestConfig): Promise<void> {
-  const manuscriptEntries = entries.filter(
-    (e): e is ManuscriptEntry => 'source' in e,
-  );
-  const processedTocEntries: { entry: ContentsEntry; content: string }[] = [];
-  const processedCoverEntries: { entry: CoverEntry; content: string }[] = [];
+}: ResolvedTaskConfig & { viewerInput: WebPublicationManifestConfig }) {
+  const manifestEntries: ArticleEntryConfig[] = entries.map((entry) => ({
+    title:
+      (entry.rel === 'contents' && (entry as ContentsEntry).tocTitle) ||
+      entry.title,
+    path: upath.relative(workspaceDir, entry.target),
+    encodingFormat:
+      !('contentType' in entry) ||
+      entry.contentType === 'text/markdown' ||
+      entry.contentType === 'text/html'
+        ? undefined
+        : entry.contentType,
+    rel: entry.rel,
+  }));
+  writePublicationManifest(manifestPath, {
+    title,
+    author,
+    language,
+    readingProgression,
+    cover: cover && {
+      url: upath.relative(entryContextDir, cover.src),
+      name: cover.name,
+    },
+    entries: manifestEntries,
+    modified: new Date().toISOString(),
+  });
+}
 
-  for (const entry of entries) {
-    const { source, type } =
-      entry.rel === 'contents' || entry.rel === 'cover'
-        ? (entry as ContentsEntry | CoverEntry).template || {}
-        : (entry as ManuscriptEntry);
-    let content: string;
-
-    // calculate style path
-    const style = entry.themes.flatMap((theme) =>
-      locateThemePath(theme, upath.dirname(entry.target)),
-    );
-
-    if (source && type) {
-      if (type === 'text/markdown') {
-        // compile markdown
-        const vfile = await processMarkdown(documentProcessorFactory, source, {
-          ...vfmOptions,
-          style,
-          title: entry.title,
-          language: language ?? undefined,
-        });
-        content = String(vfile);
-      } else if (type === 'text/html' || type === 'application/xhtml+xml') {
-        content = fs.readFileSync(source, 'utf8');
-        content = processManuscriptHtml(content, {
-          style,
-          title: entry.title,
-          contentType: type,
-          language,
-        });
-      } else {
-        if (!pathEquals(source, entry.target)) {
-          await copy(source, entry.target);
-        }
-        continue;
-      }
-    } else if (entry.rel === 'contents') {
-      content = generateDefaultTocHtml({
-        language,
-        title,
-      });
-      content = processManuscriptHtml(content, {
-        style,
-        title,
-        contentType: 'text/html',
-        language,
-      });
-    } else if (entry.rel === 'cover') {
-      content = generateDefaultCoverHtml({ language, title: entry.title });
-      content = processManuscriptHtml(content, {
-        style,
-        title: entry.title,
-        contentType: 'text/html',
-        language,
-      });
-    } else {
-      continue;
-    }
-
+export async function compile(
+  config: ResolvedTaskConfig & { viewerInput: WebPublicationManifestConfig },
+): Promise<void> {
+  const tocEntries: ParsedEntry[] = [];
+  for (const entry of config.entries) {
     if (entry.rel === 'contents') {
-      processedTocEntries.push({
-        entry: entry as ContentsEntry,
-        content,
-      });
-      continue;
-    } else if (entry.rel === 'cover') {
-      processedCoverEntries.push({
-        entry: entry as CoverEntry,
-        content,
-      });
+      // To transpile the table of contents, all dependent entries must be transpiled in advance
+      tocEntries.push(entry);
       continue;
     }
-
-    if (!source || !pathEquals(source, entry.target)) {
-      fs.mkdirSync(upath.dirname(entry.target), { recursive: true });
-      fs.writeFileSync(entry.target, content);
-    }
+    await transformManuscript(entry, config);
   }
-
-  for (const { entry, content } of processedTocEntries) {
-    const transformedContent = await processTocHtml(content, {
-      entries: manuscriptEntries,
-      manifestPath,
-      distDir: upath.dirname(entry.target),
-      tocTitle: entry.tocTitle,
-      sectionDepth: entry.sectionDepth,
-      styleOptions: entry,
-      transform: entry.transform,
-    });
-    fs.mkdirSync(upath.dirname(entry.target), { recursive: true });
-    fs.writeFileSync(entry.target, transformedContent);
-  }
-
-  for (const { entry, content } of processedCoverEntries) {
-    const transformedContent = await processCoverHtml(content, {
-      imageSrc: upath.relative(
-        upath.join(
-          entryContextDir,
-          upath.relative(workspaceDir, entry.target),
-          '..',
-        ),
-        entry.coverImageSrc,
-      ),
-      imageAlt: entry.coverImageAlt,
-      styleOptions: entry,
-    });
-    fs.mkdirSync(upath.dirname(entry.target), { recursive: true });
-    fs.writeFileSync(entry.target, transformedContent);
+  for (const entry of tocEntries) {
+    await transformManuscript(entry, config);
   }
 
   // generate manifest
-  if (needToGenerateManifest) {
-    const manifestEntries: ArticleEntryObject[] = entries.map((entry) => ({
-      title:
-        (entry.rel === 'contents' && (entry as ContentsEntry).tocTitle) ||
-        entry.title,
-      path: upath.relative(workspaceDir, entry.target),
-      encodingFormat:
-        !('type' in entry) ||
-        entry.type === 'text/markdown' ||
-        entry.type === 'text/html'
-          ? undefined
-          : entry.type,
-      rel: entry.rel,
-    }));
-    writePublicationManifest(manifestPath, {
-      title,
-      author,
-      language,
-      readingProgression,
-      cover: cover && {
-        url: upath.relative(entryContextDir, cover.src),
-        name: cover.name,
-      },
-      entries: manifestEntries,
-      modified: new Date().toISOString(),
-    });
+  if (config.viewerInput.needToGenerateManifest) {
+    await generateManifest(config);
   }
 }
 
 export function getDefaultIgnorePatterns({
   themesDir,
   cwd,
-}: Pick<MergedConfig, 'themesDir'> & {
+}: Pick<ResolvedTaskConfig, 'themesDir'> & {
   cwd: string;
 }): string[] {
   const ignorePatterns = [
@@ -310,7 +407,7 @@ export function getIgnoreAssetPatterns({
   outputs,
   entries,
   cwd,
-}: Pick<MergedConfig, 'outputs' | 'entries'> & {
+}: Pick<ResolvedTaskConfig, 'outputs' | 'entries'> & {
   cwd: string;
 }): string[] {
   return [
@@ -321,55 +418,79 @@ export function getIgnoreAssetPatterns({
           ? upath.join(upath.relative(cwd, p), '**')
           : upath.relative(cwd, p),
     ),
-    ...entries.flatMap((entry) => {
-      const source = entry.template?.source;
-      return source && pathContains(cwd, source)
-        ? upath.relative(cwd, source)
+    ...entries.flatMap(({ template }) => {
+      return template?.type === 'file' && pathContains(cwd, template.pathname)
+        ? upath.relative(cwd, template.pathname)
         : [];
     }),
   ];
 }
 
-export async function globAssetFiles({
+function getAssetMatcherSettings({
   copyAsset: { fileExtensions, includes, excludes },
   outputs,
   themesDir,
   entries,
   cwd,
   ignore = [],
-}: Pick<MergedConfig, 'copyAsset' | 'outputs' | 'themesDir' | 'entries'> & {
+}: Pick<
+  ResolvedTaskConfig,
+  'copyAsset' | 'outputs' | 'themesDir' | 'entries'
+> & {
   cwd: string;
   ignore?: string[];
-}): Promise<Set<string>> {
+}): { patterns: string[]; ignore: string[] }[] {
   const ignorePatterns = [
     ...ignore,
     ...excludes,
     ...getIgnoreAssetPatterns({ outputs, entries, cwd }),
   ];
   const weakIgnorePatterns = getDefaultIgnorePatterns({ themesDir, cwd });
-  debug('globAssetFiles > ignorePatterns', ignorePatterns);
-  debug('globAssetFiles > weakIgnorePatterns', weakIgnorePatterns);
+  Logger.debug('globAssetFiles > ignorePatterns', ignorePatterns);
+  Logger.debug('globAssetFiles > weakIgnorePatterns', weakIgnorePatterns);
 
-  const assets = new Set([
+  return [
     // Step 1: Glob files with an extension in `fileExtension`
     // Ignore files in node_modules directory, theme example files and files matched `excludes`
-    ...(await glob(
-      fileExtensions.map((ext) => `**/*.${ext}`),
-      {
-        cwd,
-        ignore: [...ignorePatterns, ...weakIgnorePatterns],
-        followSymbolicLinks: true,
-      },
-    )),
+    {
+      patterns: fileExtensions.map((ext) => `**/*.${ext}`),
+      ignore: [...ignorePatterns, ...weakIgnorePatterns],
+    },
     // Step 2: Glob files matched with `includes`
     // Ignore only files matched `excludes`
-    ...(await glob(includes, {
-      cwd,
+    {
+      patterns: includes,
       ignore: ignorePatterns,
-      followSymbolicLinks: true,
-    })),
-  ]);
-  return assets;
+    },
+  ];
+}
+
+export function getAssetMatcher(
+  arg: Parameters<typeof getAssetMatcherSettings>[0],
+) {
+  const matchers = getAssetMatcherSettings(arg).map(({ patterns, ignore }) =>
+    picomatch(patterns, { ignore }),
+  );
+  return (test: string) => matchers.some((matcher) => matcher(test));
+}
+
+export async function globAssetFiles(
+  arg: Parameters<typeof getAssetMatcherSettings>[0],
+): Promise<Set<string>> {
+  const settings = getAssetMatcherSettings(arg);
+  return new Set(
+    (
+      await Promise.all(
+        settings.map(({ patterns, ignore }) =>
+          glob(patterns, {
+            cwd: arg.cwd,
+            ignore,
+            followSymbolicLinks: true,
+          }),
+        ),
+      )
+    ).flat(),
+  );
 }
 
 export async function copyAssets({
@@ -379,7 +500,7 @@ export async function copyAssets({
   outputs,
   themesDir,
   entries,
-}: MergedConfig): Promise<void> {
+}: ResolvedTaskConfig): Promise<void> {
   if (pathEquals(entryContextDir, workspaceDir)) {
     return;
   }
@@ -395,7 +516,7 @@ export async function copyAssets({
       ...(relWorkspaceDir ? [upath.join(relWorkspaceDir, '**')] : []),
     ],
   });
-  debug('assets', assets);
+  Logger.debug('assets', assets);
   for (const asset of assets) {
     const target = upath.join(workspaceDir, asset);
     fs.mkdirSync(upath.dirname(target), { recursive: true });
@@ -404,7 +525,7 @@ export async function copyAssets({
 }
 
 export function checkOverwriteViolation(
-  { entryContextDir, workspaceDir }: MergedConfig,
+  { entryContextDir, workspaceDir }: ResolvedTaskConfig,
   target: string,
   fileInformation: string,
 ) {

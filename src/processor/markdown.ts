@@ -5,7 +5,7 @@ import {
 } from '@vivliostyle/vfm';
 import fs from 'node:fs';
 import vfile, { VFile } from 'vfile';
-import { DocumentProcessorFactory } from '../input/config.js';
+import { DocumentProcessorFactory } from '../config/resolve.js';
 
 export interface VSFile extends VFile {
   data: {

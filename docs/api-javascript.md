@@ -6,14 +6,9 @@
 ### Functions
 
 - [`build`](#build)
+- [`createVitePlugin`](#createviteplugin)
 - [`init`](#init)
 - [`preview`](#preview)
-
-### Interfaces
-
-- [`BuildCliFlags`](#buildcliflags)
-- [`InitCliFlags`](#initcliflags)
-- [`PreviewCliFlags`](#previewcliflags)
 
 ### Type Aliases
 
@@ -25,7 +20,7 @@
 
 ### build()
 
-> **build**(`cliFlags`): `Promise`\<`void`\>
+> **build**(`options`): `Promise`\<`void`\>
 
 Build publication file(s) from the given configuration.
 
@@ -39,7 +34,85 @@ build({
 
 #### Parameters
 
-• **cliFlags**: [`BuildCliFlags`](api-javascript.md#buildcliflags)
+• **options**
+
+• **options.author?**: `string` = `...`
+
+• **options.bleed?**: `string` = `...`
+
+• **options.browser?**: `"chromium"` \| `"firefox"` \| `"webkit"` = `...`
+
+• **options.config?**: `string` = `...`
+
+• **options.configData?**: `null` \| `object` & `object` \| `object` & `object`[] = `...`
+
+• **options.cropMarks?**: `boolean` = `...`
+
+• **options.cropOffset?**: `string` = `...`
+
+• **options.css?**: `string` = `...`
+
+• **options.cwd?**: `string` = `...`
+
+• **options.enableStaticServe?**: `boolean` = `...`
+
+• **options.enableViewerStartPage?**: `boolean` = `...`
+
+• **options.executableBrowser?**: `string` = `...`
+
+• **options.ignoreHttpsErrors?**: `boolean` = `...`
+
+• **options.image?**: `string` = `...`
+
+• **options.input?**: `string` = `...`
+
+• **options.language?**: `string` = `...`
+
+• **options.logLevel?**: `"silent"` \| `"info"` \| `"verbose"` \| `"debug"` = `...`
+
+• **options.openViewer?**: `boolean` = `...`
+
+• **options.output?**: `string` \| `object` & `object` \| (`string` \| `object` & `object`)[] = `...`
+
+• **options.preflight?**: `"press-ready"` \| `"press-ready-local"` = `...`
+
+• **options.preflightOption?**: `string` \| `string`[] = `...`
+
+• **options.pressReady?**: `boolean` = `...`
+
+• **options.proxyBypass?**: `string` = `...`
+
+• **options.proxyPass?**: `string` = `...`
+
+• **options.proxyServer?**: `string` = `...`
+
+• **options.proxyUser?**: `string` = `...`
+
+• **options.quick?**: `boolean` = `...`
+
+• **options.readingProgression?**: `"ltr"` \| `"rtl"` = `...`
+
+• **options.renderMode?**: `"local"` \| `"docker"` = `...`
+
+• **options.sandbox?**: `boolean` = `...`
+
+• **options.singleDoc?**: `boolean` = `...`
+
+• **options.size?**: `string` = `...`
+
+• **options.style?**: `string` = `...`
+
+• **options.theme?**: `string` \| `object` & `object` \| (`string` \| `object` & `object`)[] = `...`
+
+• **options.timeout?**: `number` = `...`
+
+• **options.title?**: `string` = `...`
+
+• **options.userStyle?**: `string` = `...`
+
+• **options.viewer?**: `string` = `...`
+
+• **options.viewerParam?**: `string` = `...`
 
 #### Returns
 
@@ -47,15 +120,185 @@ build({
 
 ***
 
+### createVitePlugin()
+
+> **createVitePlugin**(`inlineConfig`): `Promise`\<`Plugin`[]\>
+
+#### Parameters
+
+• **inlineConfig** = `{}`
+
+• **inlineConfig.author?**: `string` = `...`
+
+• **inlineConfig.bleed?**: `string` = `...`
+
+• **inlineConfig.browser?**: `"chromium"` \| `"firefox"` \| `"webkit"` = `...`
+
+• **inlineConfig.config?**: `string` = `...`
+
+• **inlineConfig.configData?**: `null` \| `object` & `object` \| `object` & `object`[] = `...`
+
+• **inlineConfig.cropMarks?**: `boolean` = `...`
+
+• **inlineConfig.cropOffset?**: `string` = `...`
+
+• **inlineConfig.css?**: `string` = `...`
+
+• **inlineConfig.cwd?**: `string` = `...`
+
+• **inlineConfig.enableStaticServe?**: `boolean` = `...`
+
+• **inlineConfig.enableViewerStartPage?**: `boolean` = `...`
+
+• **inlineConfig.executableBrowser?**: `string` = `...`
+
+• **inlineConfig.ignoreHttpsErrors?**: `boolean` = `...`
+
+• **inlineConfig.image?**: `string` = `...`
+
+• **inlineConfig.input?**: `string` = `...`
+
+• **inlineConfig.language?**: `string` = `...`
+
+• **inlineConfig.logLevel?**: `"silent"` \| `"info"` \| `"verbose"` \| `"debug"` = `...`
+
+• **inlineConfig.openViewer?**: `boolean` = `...`
+
+• **inlineConfig.output?**: `string` \| `object` & `object` \| (`string` \| `object` & `object`)[] = `...`
+
+• **inlineConfig.preflight?**: `"press-ready"` \| `"press-ready-local"` = `...`
+
+• **inlineConfig.preflightOption?**: `string` \| `string`[] = `...`
+
+• **inlineConfig.pressReady?**: `boolean` = `...`
+
+• **inlineConfig.proxyBypass?**: `string` = `...`
+
+• **inlineConfig.proxyPass?**: `string` = `...`
+
+• **inlineConfig.proxyServer?**: `string` = `...`
+
+• **inlineConfig.proxyUser?**: `string` = `...`
+
+• **inlineConfig.quick?**: `boolean` = `...`
+
+• **inlineConfig.readingProgression?**: `"ltr"` \| `"rtl"` = `...`
+
+• **inlineConfig.renderMode?**: `"local"` \| `"docker"` = `...`
+
+• **inlineConfig.sandbox?**: `boolean` = `...`
+
+• **inlineConfig.singleDoc?**: `boolean` = `...`
+
+• **inlineConfig.size?**: `string` = `...`
+
+• **inlineConfig.style?**: `string` = `...`
+
+• **inlineConfig.theme?**: `string` \| `object` & `object` \| (`string` \| `object` & `object`)[] = `...`
+
+• **inlineConfig.timeout?**: `number` = `...`
+
+• **inlineConfig.title?**: `string` = `...`
+
+• **inlineConfig.userStyle?**: `string` = `...`
+
+• **inlineConfig.viewer?**: `string` = `...`
+
+• **inlineConfig.viewerParam?**: `string` = `...`
+
+#### Returns
+
+`Promise`\<`Plugin`[]\>
+
+***
+
 ### init()
 
-> **init**(`cliFlags`): `Promise`\<`void`\>
+> **init**(`options`): `Promise`\<`void`\>
 
 Initialize a new vivliostyle.config.js file.
 
 #### Parameters
 
-• **cliFlags**: [`InitCliFlags`](api-javascript.md#initcliflags)
+• **options**
+
+• **options.author?**: `string` = `...`
+
+• **options.bleed?**: `string` = `...`
+
+• **options.browser?**: `"chromium"` \| `"firefox"` \| `"webkit"` = `...`
+
+• **options.config?**: `string` = `...`
+
+• **options.configData?**: `null` \| `object` & `object` \| `object` & `object`[] = `...`
+
+• **options.cropMarks?**: `boolean` = `...`
+
+• **options.cropOffset?**: `string` = `...`
+
+• **options.css?**: `string` = `...`
+
+• **options.cwd?**: `string` = `...`
+
+• **options.enableStaticServe?**: `boolean` = `...`
+
+• **options.enableViewerStartPage?**: `boolean` = `...`
+
+• **options.executableBrowser?**: `string` = `...`
+
+• **options.ignoreHttpsErrors?**: `boolean` = `...`
+
+• **options.image?**: `string` = `...`
+
+• **options.input?**: `string` = `...`
+
+• **options.language?**: `string` = `...`
+
+• **options.logLevel?**: `"silent"` \| `"info"` \| `"verbose"` \| `"debug"` = `...`
+
+• **options.openViewer?**: `boolean` = `...`
+
+• **options.output?**: `string` \| `object` & `object` \| (`string` \| `object` & `object`)[] = `...`
+
+• **options.preflight?**: `"press-ready"` \| `"press-ready-local"` = `...`
+
+• **options.preflightOption?**: `string` \| `string`[] = `...`
+
+• **options.pressReady?**: `boolean` = `...`
+
+• **options.proxyBypass?**: `string` = `...`
+
+• **options.proxyPass?**: `string` = `...`
+
+• **options.proxyServer?**: `string` = `...`
+
+• **options.proxyUser?**: `string` = `...`
+
+• **options.quick?**: `boolean` = `...`
+
+• **options.readingProgression?**: `"ltr"` \| `"rtl"` = `...`
+
+• **options.renderMode?**: `"local"` \| `"docker"` = `...`
+
+• **options.sandbox?**: `boolean` = `...`
+
+• **options.singleDoc?**: `boolean` = `...`
+
+• **options.size?**: `string` = `...`
+
+• **options.style?**: `string` = `...`
+
+• **options.theme?**: `string` \| `object` & `object` \| (`string` \| `object` & `object`)[] = `...`
+
+• **options.timeout?**: `number` = `...`
+
+• **options.title?**: `string` = `...`
+
+• **options.userStyle?**: `string` = `...`
+
+• **options.viewer?**: `string` = `...`
+
+• **options.viewerParam?**: `string` = `...`
 
 #### Returns
 
@@ -65,133 +308,95 @@ Initialize a new vivliostyle.config.js file.
 
 ### preview()
 
-> **preview**(`cliFlags`): `Promise`\<`void`\>
+> **preview**(`options`): `Promise`\<`void`\>
 
-Open a preview of the publication.
+Open a browser for previewing the publication.
 
 #### Parameters
 
-• **cliFlags**: [`PreviewCliFlags`](api-javascript.md#previewcliflags)
+• **options**
+
+• **options.author?**: `string` = `...`
+
+• **options.bleed?**: `string` = `...`
+
+• **options.browser?**: `"chromium"` \| `"firefox"` \| `"webkit"` = `...`
+
+• **options.config?**: `string` = `...`
+
+• **options.configData?**: `null` \| `object` & `object` \| `object` & `object`[] = `...`
+
+• **options.cropMarks?**: `boolean` = `...`
+
+• **options.cropOffset?**: `string` = `...`
+
+• **options.css?**: `string` = `...`
+
+• **options.cwd?**: `string` = `...`
+
+• **options.enableStaticServe?**: `boolean` = `...`
+
+• **options.enableViewerStartPage?**: `boolean` = `...`
+
+• **options.executableBrowser?**: `string` = `...`
+
+• **options.ignoreHttpsErrors?**: `boolean` = `...`
+
+• **options.image?**: `string` = `...`
+
+• **options.input?**: `string` = `...`
+
+• **options.language?**: `string` = `...`
+
+• **options.logLevel?**: `"silent"` \| `"info"` \| `"verbose"` \| `"debug"` = `...`
+
+• **options.openViewer?**: `boolean` = `...`
+
+• **options.output?**: `string` \| `object` & `object` \| (`string` \| `object` & `object`)[] = `...`
+
+• **options.preflight?**: `"press-ready"` \| `"press-ready-local"` = `...`
+
+• **options.preflightOption?**: `string` \| `string`[] = `...`
+
+• **options.pressReady?**: `boolean` = `...`
+
+• **options.proxyBypass?**: `string` = `...`
+
+• **options.proxyPass?**: `string` = `...`
+
+• **options.proxyServer?**: `string` = `...`
+
+• **options.proxyUser?**: `string` = `...`
+
+• **options.quick?**: `boolean` = `...`
+
+• **options.readingProgression?**: `"ltr"` \| `"rtl"` = `...`
+
+• **options.renderMode?**: `"local"` \| `"docker"` = `...`
+
+• **options.sandbox?**: `boolean` = `...`
+
+• **options.singleDoc?**: `boolean` = `...`
+
+• **options.size?**: `string` = `...`
+
+• **options.style?**: `string` = `...`
+
+• **options.theme?**: `string` \| `object` & `object` \| (`string` \| `object` & `object`)[] = `...`
+
+• **options.timeout?**: `number` = `...`
+
+• **options.title?**: `string` = `...`
+
+• **options.userStyle?**: `string` = `...`
+
+• **options.viewer?**: `string` = `...`
+
+• **options.viewerParam?**: `string` = `...`
 
 #### Returns
 
 `Promise`\<`void`\>
-
-## Interfaces
-
-### BuildCliFlags
-
-#### Extends
-
-- `CliFlags`
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| `author?` | `string` | - |
-| `bleed?` | `string` | - |
-| `browser?` | `"chromium"` \| `"firefox"` \| `"webkit"` | - |
-| `bypassedPdfBuilderOption?` | `string` | - |
-| `configPath?` | `string` | - |
-| `cropMarks?` | `boolean` | - |
-| `cropOffset?` | `string` | - |
-| `css?` | `string` | - |
-| `executableBrowser?` | `string` | - |
-| ~~`executableChromium?`~~ | `string` | **Deprecated** |
-| `http?` | `boolean` | - |
-| `ignoreHttpsErrors?` | `boolean` | - |
-| `image?` | `string` | - |
-| `input?` | `string` | - |
-| `language?` | `string` | - |
-| `logLevel?` | `"silent"` \| `"info"` \| `"verbose"` \| `"debug"` | - |
-| `preflight?` | `"press-ready"` \| `"press-ready-local"` | - |
-| `preflightOption?` | `string`[] | - |
-| `pressReady?` | `boolean` | - |
-| `proxyBypass?` | `string` | - |
-| `proxyPass?` | `string` | - |
-| `proxyServer?` | `string` | - |
-| `proxyUser?` | `string` | - |
-| `quick?` | `boolean` | - |
-| `readingProgression?` | `"ltr"` \| `"rtl"` | - |
-| `renderMode?` | `"local"` \| `"docker"` | - |
-| `sandbox?` | `boolean` | - |
-| `singleDoc?` | `boolean` | - |
-| `size?` | `string` | - |
-| `style?` | `string` | - |
-| `targets?` | `Pick`\<`OutputFormat`, `"path"` \| `"format"`\>[] | - |
-| `theme?` | `string` | - |
-| `timeout?` | `number` | - |
-| `title?` | `string` | - |
-| `userStyle?` | `string` | - |
-| ~~`verbose?`~~ | `boolean` | **Deprecated** |
-| `viewer?` | `string` | - |
-| `viewerParam?` | `string` | - |
-
-***
-
-### InitCliFlags
-
-#### Properties
-
-| Property | Type |
-| ------ | ------ |
-| `author?` | `string` |
-| `language?` | `string` |
-| `logLevel?` | `"silent"` \| `"info"` \| `"debug"` |
-| `size?` | `string` |
-| `theme?` | `string` |
-| `title?` | `string` |
-
-***
-
-### PreviewCliFlags
-
-#### Extends
-
-- `CliFlags`
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| `author?` | `string` | - |
-| `bleed?` | `string` | - |
-| `browser?` | `"chromium"` \| `"firefox"` \| `"webkit"` | - |
-| `configPath?` | `string` | - |
-| `cropMarks?` | `boolean` | - |
-| `cropOffset?` | `string` | - |
-| `css?` | `string` | - |
-| `executableBrowser?` | `string` | - |
-| ~~`executableChromium?`~~ | `string` | **Deprecated** |
-| `http?` | `boolean` | - |
-| `ignoreHttpsErrors?` | `boolean` | - |
-| `image?` | `string` | - |
-| `input?` | `string` | - |
-| `language?` | `string` | - |
-| `logLevel?` | `"silent"` \| `"info"` \| `"verbose"` \| `"debug"` | - |
-| `preflight?` | `"press-ready"` \| `"press-ready-local"` | - |
-| `preflightOption?` | `string`[] | - |
-| `pressReady?` | `boolean` | - |
-| `proxyBypass?` | `string` | - |
-| `proxyPass?` | `string` | - |
-| `proxyServer?` | `string` | - |
-| `proxyUser?` | `string` | - |
-| `quick?` | `boolean` | - |
-| `readingProgression?` | `"ltr"` \| `"rtl"` | - |
-| `renderMode?` | `"local"` \| `"docker"` | - |
-| `sandbox?` | `boolean` | - |
-| `singleDoc?` | `boolean` | - |
-| `size?` | `string` | - |
-| `style?` | `string` | - |
-| `targets?` | `Pick`\<`OutputFormat`, `"path"` \| `"format"`\>[] | - |
-| `theme?` | `string` | - |
-| `timeout?` | `number` | - |
-| `title?` | `string` | - |
-| `userStyle?` | `string` | - |
-| ~~`verbose?`~~ | `boolean` | **Deprecated** |
-| `viewer?` | `string` | - |
-| `viewerParam?` | `string` | - |
 
 ## Type Aliases
 

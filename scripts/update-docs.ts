@@ -1,3 +1,4 @@
+import { slug } from 'github-slugger';
 import { exec } from 'node:child_process';
 import * as fs from 'node:fs';
 import path from 'node:path';
@@ -5,7 +6,7 @@ import { promisify } from 'node:util';
 import prettier from 'prettier';
 import { JSONOutput } from 'typedoc';
 import * as v from 'valibot';
-import { VivliostyleConfigSchema } from '../src/input/schema.js';
+import { VivliostyleConfigSchema } from '../src/config/schema.js';
 import { useTmpDirectory } from '../src/util.js';
 
 function insertDocs(
@@ -25,6 +26,7 @@ function insertDocs(
 async function buildConfigDocs(): Promise<string> {
   const visited = Symbol('visited');
   const definition = Symbol('definition');
+  const namedDefinitionSet = new Set<string>();
 
   const getSchema = (
     s: v.BaseSchema<any, any, any>,
@@ -38,6 +40,7 @@ async function buildConfigDocs(): Promise<string> {
     | v.OptionalSchema<any, any>
     | v.NonOptionalSchemaAsync<any, any>
     | v.LazySchema<any>
+    | v.RecordSchema<any, any, any>
     | v.FunctionSchema<any>
     | v.InstanceSchema<any, any>
     | v.StringSchema<any>
@@ -151,6 +154,12 @@ async function buildConfigDocs(): Promise<string> {
       const out = await traverse(actual);
       docs += out;
       schema[definition] = getSchema(actual)[definition];
+    } else if (v.isOfType('record', schema)) {
+      const key = await traverse(schema.key);
+      const value = await traverse(schema.value);
+      docs += key + value;
+      schema[definition] =
+        `{[key: (${getSchema(schema.key)[definition]})]: ${getSchema(schema.value)[definition]}}`;
     } else if (v.isOfType('function', schema)) {
       const out = await (meta.typeReferences || []).reduce(
         (acc, type) => acc.then(async (acc) => [...acc, await traverse(type)]),
@@ -167,12 +176,14 @@ async function buildConfigDocs(): Promise<string> {
     ) {
       schema[definition] = schema.expects;
     } else {
-      schema[definition] = `"{${schema.type}(${schema.expects})}"`;
+      schema[definition] =
+        meta.typeString || `"{${schema.type}(${schema.expects})}"`;
     }
 
     if (!meta.title) {
       return docs;
     }
+    namedDefinitionSet.add(meta.title);
 
     const namedDefinition = schema[definition];
     schema[definition] = meta.title;
@@ -199,14 +210,17 @@ async function buildConfigDocs(): Promise<string> {
             value.type === 'optional' || value.type === 'non_optional'
               ? (value as v.OptionalSchema<any, any>).wrapped
               : value;
+          const typeString = value[definition]
+            ? value[definition].replace(
+                new RegExp(`(${[...namedDefinitionSet].join('|')})`, 'g'),
+                (v) => `[${v}](#${slug(v)})`,
+              )
+            : unwrapped.expects || 'unknown';
           ret += propMeta.deprecated
-            ? `\n  - ~~\`${k}\`~~ _Deprecated_`
-            : `\n  - \`${k}\` ${unwrapped.expects}`;
+            ? `\n\n  - ~~\`${k}\`~~ _Deprecated_`
+            : `\n\n  - \`${k}\`: ${typeString}`;
           if (propMeta.description) {
-            ret += `\n    - ${propMeta.description
-              .trim()
-              .split(/\n\s*/s)
-              .join('\n      ')}`;
+            ret += `  \n    ${propMeta.description.split('\n').join('\n    ')}`;
           }
         }
         return ['#### Properties', ret];

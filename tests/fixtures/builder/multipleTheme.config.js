@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   title: 'title',
   theme: ['@vivliostyle/theme-academic', 'manuscript/sample-theme.css'],
   entry: {
@@ -11,7 +11,7 @@ module.exports = {
       { specifier: 'manuscript/sample-theme.css' },
     ],
   },
-  output: ['multipleThemeTheme'],
+  output: [],
   workspaceDir: '.vs-multipleTheme',
   toc: true,
 };

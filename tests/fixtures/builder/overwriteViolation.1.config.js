@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   title: 'Yo',
   entry: 'manuscript/soda.md',
   output: {

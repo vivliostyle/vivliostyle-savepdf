@@ -23,6 +23,9 @@ export const EPUB_LANDMARKS_TITLE = 'Landmarks';
 export const EPUB_LANDMARKS_TOC_ENTRY = TOC_TITLE;
 export const EPUB_LANDMARKS_COVER_ENTRY = 'Cover Page';
 
+export const EMPTY_DATA_URI = 'data:,';
+export const VIEWER_ROOT_PATH = '/__vivliostyle-viewer';
+
 export const cliRoot = upath.join(fileURLToPath(import.meta.url), '../..');
 export const cliVersion = (() => {
   if (import.meta.env?.VITEST) {

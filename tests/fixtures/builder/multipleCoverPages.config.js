@@ -1,6 +1,4 @@
-const baseConfig = require('./workspace.config.cjs');
-
-module.exports = {
+export default {
   title: 'title',
   author: 'author',
   entry: [
@@ -21,6 +19,7 @@ module.exports = {
       pageBreakBefore: 'left',
     },
   ],
+  output: [],
   workspaceDir: '.vs-multipleCoverPages',
   toc: true,
   cover: 'manuscript/cover.png',

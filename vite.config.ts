@@ -12,5 +12,8 @@ export default defineConfig({
       printBasicPrototype: true,
     },
     globalSetup: ['tests/global-setup/clean.ts'],
+    env: {
+      NO_COLOR: 'true',
+    },
   },
 });

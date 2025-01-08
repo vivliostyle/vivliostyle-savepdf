@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   title: 'Yo',
   workspaceDir: '.vs-overriddenWorkspace',
   entry: 'manuscript/soda.md',

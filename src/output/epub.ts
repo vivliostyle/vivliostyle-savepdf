@@ -1,7 +1,6 @@
 import type { JSDOM } from '@vivliostyle/jsdom';
 import archiver from 'archiver';
 import { lookup as lookupLanguage } from 'bcp-47-match';
-import chalk from 'chalk';
 import { XMLBuilder } from 'fast-xml-parser';
 import { copy, remove } from 'fs-extra/esm';
 import GithubSlugger from 'github-slugger';
@@ -20,6 +19,7 @@ import {
   TOC_TITLE,
   XML_DECLARATION,
 } from '../const.js';
+import { Logger } from '../logger.js';
 import {
   PageListResourceTreeRoot,
   TocResourceTreeRoot,
@@ -35,7 +35,7 @@ import type {
   PublicationManifest,
   ResourceCategorization,
 } from '../schema/publication.schema.js';
-import { DetailError, debug, logWarn, useTmpDirectory } from '../util.js';
+import { DetailError, useTmpDirectory } from '../util.js';
 
 interface ManifestEntry {
   href: string;
@@ -134,7 +134,7 @@ export async function exportEpub({
   target: string;
   epubVersion: '3.0';
 }) {
-  debug('Export EPUB', {
+  Logger.debug('Export EPUB', {
     webpubDir,
     entryHtmlFile,
     relManifestPath,
@@ -230,10 +230,8 @@ export async function exportEpub({
     .flat()
     .flatMap((v) => (v ? (typeof v === 'string' ? { url: v } : v) : []));
   if (!tocHtml) {
-    logWarn(
-      chalk.yellowBright(
-        'No table of contents document was found. for EPUB output, we recommend to enable `toc` option in your Vivliostyle config file to generate a table of contents document.',
-      ),
+    Logger.logWarn(
+      'No table of contents document was found. for EPUB output, we recommend to enable `toc` option in your Vivliostyle config file to generate a table of contents document.',
     );
     tocHtml =
       htmlFiles.find((f) => f === entryHtmlRelPath) || readingOrder[0].url;
@@ -296,10 +294,10 @@ export async function exportEpub({
   };
 
   const processResult: Record<string, XhtmlEntry> = {};
-  debug(`Transpiling ToC HTML to XHTML: ${tocHtml}`);
+  Logger.debug(`Transpiling ToC HTML to XHTML: ${tocHtml}`);
   processResult[tocHtml] = await processHtml(tocHtml);
   for (const target of htmlFiles.filter((f) => f !== tocHtml)) {
-    debug(`Transpiling HTML to XHTML: ${target}`);
+    Logger.debug(`Transpiling HTML to XHTML: ${target}`);
     processResult[target] = await processHtml(target);
   }
 
@@ -349,7 +347,7 @@ export async function exportEpub({
   );
 
   // EPUB/content.opf
-  debug(`Generating content.opf`);
+  Logger.debug(`Generating content.opf`);
   fs.writeFileSync(
     upath.join(tmpDir, 'EPUB/content.opf'),
     buildEpubPackageDocument({
@@ -386,7 +384,7 @@ async function transpileHtmlToXhtml({
   hasSvgContent: boolean;
 }> {
   const absPath = upath.join(contextDir, target);
-  const { dom } = await getJsdomFromUrlOrFile(absPath);
+  const dom = await getJsdomFromUrlOrFile({ src: absPath });
   const { document } = dom.window;
   // `xmlns` will be supplied in later serialization process
   document.documentElement.removeAttribute('xmlns');
@@ -448,7 +446,7 @@ async function processTocDocument({
       nav.setAttribute('id', TOC_ID);
       nav.setAttribute('epub:type', 'toc');
     } else {
-      debug(`Generating toc nav element: ${target}`);
+      Logger.debug(`Generating toc nav element: ${target}`);
 
       const nav = document.createElement('nav');
       nav.setAttribute('id', TOC_ID);
@@ -467,9 +465,9 @@ async function processTocDocument({
       for (const content of readingOrder) {
         let name = normalizeLocalizableString(content.name, docLanguages);
         if (!name) {
-          const { dom } = await getJsdomFromUrlOrFile(
-            upath.join(contextDir, changeExtname(content.url, '.xhtml')),
-          );
+          const dom = await getJsdomFromUrlOrFile({
+            src: upath.join(contextDir, changeExtname(content.url, '.xhtml')),
+          });
           name = dom.window.document.title;
         }
         const li = document.createElement('li');
@@ -483,11 +481,11 @@ async function processTocDocument({
 
       nav.appendChild(ol);
       document.body.appendChild(nav);
-      debug('Generated toc nav element', nav.outerHTML);
+      Logger.debug('Generated toc nav element', nav.outerHTML);
     }
 
     if (landmarks.length > 0) {
-      debug(`Generating landmark nav element: ${target}`);
+      Logger.debug(`Generating landmark nav element: ${target}`);
       const nav = document.createElement('nav');
       nav.setAttribute('epub:type', 'landmarks');
       nav.setAttribute('id', LANDMARKS_ID);
@@ -507,7 +505,7 @@ async function processTocDocument({
       }
       nav.appendChild(ol);
       document.body.appendChild(nav);
-      debug('Generated landmark nav element', nav.outerHTML);
+      Logger.debug('Generated landmark nav element', nav.outerHTML);
     }
   }
 
@@ -704,14 +702,14 @@ async function compressEpub({
   target: string;
   sourceDir: string;
 }): Promise<void> {
-  debug(`Compressing EPUB: ${target}`);
+  Logger.debug(`Compressing EPUB: ${target}`);
   const output = fs.createWriteStream(target);
   const archive = archiver('zip', {
     zlib: { level: 9 }, // Compression level
   });
   return new Promise((resolve, reject) => {
     output.on('close', () => {
-      debug(`Compressed EPUB: ${target}`);
+      Logger.debug(`Compressed EPUB: ${target}`);
       resolve();
     });
     output.on('error', reject);

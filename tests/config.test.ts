@@ -1,90 +1,132 @@
 import { expect, it, onTestFinished, vi } from 'vitest';
-import {
-  assertArray,
-  assertSingleItem,
-  getMergedConfig,
-  maskConfig,
-  resolveFixture,
-} from './command-util.js';
+import { VivliostyleConfigSchema } from '../src/config/schema.js';
+import { getTaskConfig, maskConfig, resolveFixture } from './command-util.js';
 
-const configFiles = [
-  'valid.1',
-  'valid.2',
-  'valid.3',
-  'valid.4',
-  'valid.5',
-  'invalid.1',
-  'invalid.2',
-] as const;
-const configFilePath = configFiles.reduce(
-  (p, v) => ({
-    ...p,
-    [v]: resolveFixture(`config/vivliostyle.config.${v}.cjs`),
-  }),
-  {} as { [k in (typeof configFiles)[number]]: string },
-);
+const validConfigData = {
+  title: 'title',
+  author: 'author',
+  theme: ['../themes/debug-theme'],
+  entry: [
+    'manuscript.md',
+    {
+      path: 'manuscript.md',
+      title: 'title',
+      theme: {
+        specifier: 'theme.css',
+      },
+    },
+  ],
+  entryContext: '.',
+  output: [
+    'output1.pdf',
+    {
+      path: 'output2.pdf',
+      format: 'pdf',
+    },
+  ],
+  size: 'size',
+  pressReady: true,
+  language: 'language',
+  toc: {
+    title: 'TOC',
+    htmlPath: './toc.html',
+    sectionDepth: 6,
+  },
+  cover: {
+    src: './cover.png',
+    name: 'Cover image alt',
+    htmlPath: './mycover.html',
+  },
+  timeout: 1,
+  workspaceDir: 'workspaceDir',
+  vfm: {
+    hardLineBreaks: true,
+    disableFormatHtml: true,
+  },
+  readingProgression: 'rtl',
+  browser: 'firefox',
+  viewerParam: 'foo=bar',
+  copyAsset: {
+    includes: ['xx/yy', '**/zz'],
+    excludes: ['*a*'],
+    includeFileExtensions: ['zip'],
+    excludeFileExtensions: ['png', 'jpg'],
+  },
+  base: '/root/vvv/',
+  server: {
+    host: true,
+    port: 9876,
+    proxy: {
+      '/api': 'http://localhost:6789',
+    },
+  },
+  static: {
+    '/static': 'path/to/static',
+    '/': ['root1', 'root2'],
+  },
+  temporaryFilePrefix: 'vvv.',
+} satisfies VivliostyleConfigSchema;
 
 it('parse vivliostyle config', async () => {
-  const validConfig1 = await getMergedConfig(['-c', configFilePath['valid.1']]);
+  const validConfig1 = await getTaskConfig(
+    ['build'],
+    resolveFixture('config'),
+    validConfigData,
+  );
   maskConfig(validConfig1);
-  expect(validConfig1).toMatchSnapshot('valid.1.config.js');
-
-  const validConfig2 = await getMergedConfig(['-c', configFilePath['valid.2']]);
-  maskConfig(validConfig2);
-  expect(validConfig2).toMatchSnapshot('valid.2.config.js');
-
-  const validConfig3 = await getMergedConfig(['-c', configFilePath['valid.3']]);
-  maskConfig(validConfig3);
-  expect(validConfig3).toMatchSnapshot('valid.3.config.js');
+  expect(validConfig1).toMatchSnapshot('config');
 });
 
 it('override option by CLI command', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    configFilePath['valid.1'],
-    '-o',
-    'yuno.pdf',
-    '-o',
-    'yuno',
-    '-f',
-    'webpub',
-    '-T',
-    'https://myTheme.example.com',
-    '-s',
-    'JIS-B5',
-    '--title',
-    'myTitle',
-    '--author',
-    'myAuthor',
-    '--language',
-    'myLanguage',
-    '--timeout',
-    '42',
-    '--ignore-https-errors',
-    '--executable-browser',
-    'myFirefox',
-    // '--browser',
-    // 'webkit',
-    '--style',
-    'https://vivlostyle.org',
-    '--user-style',
-    './user/style/dummy.css',
-    '--http',
-    '--viewer',
-    'https://vivliostyle.org/viewer/',
-    '--viewer-param',
-    'allowScripts=false&pixelRatio=16',
-    '--proxy-server',
-    'http://localhost:3128',
-    '--proxy-bypass',
-    '.example.com',
-    '--proxy-user',
-    'proxy-auth-user',
-    '--proxy-pass',
-    'proxy-auth-password',
-  ]);
+  const config = await getTaskConfig(
+    [
+      'build',
+      '-o',
+      'yuno.pdf',
+      '-o',
+      'yuno',
+      '-f',
+      'webpub',
+      '-T',
+      'https://myTheme.example.com',
+      '-s',
+      'JIS-B5',
+      '--title',
+      'myTitle',
+      '--author',
+      'myAuthor',
+      '--language',
+      'myLanguage',
+      '--timeout',
+      '42',
+      '--ignore-https-errors',
+      '--executable-browser',
+      'myFirefox',
+      // '--browser',
+      // 'webkit',
+      '--style',
+      'https://vivlostyle.org',
+      '--user-style',
+      './user/style/dummy.css',
+      '--http',
+      '--viewer',
+      'https://vivliostyle.org/viewer/',
+      '--viewer-param',
+      'allowScripts=false&pixelRatio=16',
+      '--proxy-server',
+      'http://localhost:3128',
+      '--proxy-bypass',
+      '.example.com',
+      '--proxy-user',
+      'proxy-auth-user',
+      '--proxy-pass',
+      'proxy-auth-password',
+    ],
+    resolveFixture('config'),
+    validConfigData,
+  );
   maskConfig(config);
-  expect(config).toMatchSnapshot('valid.1.config.js');
+  expect(config).toMatchSnapshot('config');
 });
 
 it('override option by environment variable', async () => {
@@ -93,165 +135,221 @@ it('override option by environment variable', async () => {
   onTestFinished(() => {
     vi.unstubAllEnvs();
   });
-  const validConfig1 = await getMergedConfig(['-c', configFilePath['valid.1']]);
-  maskConfig(validConfig1);
-  expect(validConfig1).toMatchSnapshot('valid.1.config.js');
+  const validConfig1 = await getTaskConfig(
+    ['build'],
+    resolveFixture('config'),
+    validConfigData,
+  );
+  expect(validConfig1.proxy?.server).toBe('https://localhost:9001');
+  expect(validConfig1.proxy?.bypass).toBe('bypass.example.com');
 });
 
 it('deny invalid config', () => {
   expect(
-    getMergedConfig(['-c', configFilePath['invalid.1']]),
+    getTaskConfig(
+      ['build'],
+      resolveFixture('config'),
+      // @ts-expect-error
+      {
+        output: {
+          path: 'output',
+          format: 'invalidFormat',
+        },
+      },
+    ),
   ).rejects.toThrow();
 });
 
 it('deny config which has no entry', () => {
   expect(
-    getMergedConfig(['-c', configFilePath['invalid.2']]),
+    getTaskConfig(['build'], resolveFixture('config'), { entry: [] }),
   ).rejects.toThrow();
 });
 
 it('deny if any config file or input file is not set', () => {
-  expect(getMergedConfig([])).rejects.toThrow();
-});
-
-it('Loads same config file on each way', async () => {
-  const config1 = await getMergedConfig(['-c', configFilePath['valid.1']]);
-  maskConfig(config1);
-  const config2 = await getMergedConfig([configFilePath['valid.1']]);
-  maskConfig(config2);
-  expect(config1).toEqual(config2);
+  expect(getTaskConfig(['build'], resolveFixture('config'))).rejects.toThrow();
 });
 
 it('yields a config with single markdown', async () => {
-  const config = await getMergedConfig([resolveFixture('config/sample.md')]);
+  const config = await getTaskConfig(
+    ['build', 'sample.md'],
+    resolveFixture('config'),
+  );
   maskConfig(config);
-  assertSingleItem(config);
-  expect(config.entries[0].target).toMatch(
-    /^__WORKSPACE__\/tests\/fixtures\/config\/\.vs-.+\.sample\.html$/,
-  );
-  expect(config.manifestPath).toMatch(
-    /^__WORKSPACE__\/tests\/fixtures\/config\/\.vs-.+\.publication\.json$/,
-  );
-  const entryAlias = config.exportAliases.find(
-    ({ source }) => source === config.entries[0].target,
-  );
-  expect(entryAlias?.target).toMatch(
-    '__WORKSPACE__/tests/fixtures/config/sample.html',
-  );
-  const manifestAlias = config.exportAliases.find(
-    ({ source }) => source === config.manifestPath,
-  );
-  expect(manifestAlias?.target).toMatch(
-    '__WORKSPACE__/tests/fixtures/config/publication.json',
-  );
-  config.manifestPath = '__SNIP__';
-  config.entries[0].target = '__SNIP__';
-  (config.exportAliases as unknown) = '__SNIP__';
-  expect(config).toMatchSnapshot();
+  expect(config).toMatchObject({
+    entries: [
+      {
+        target:
+          '__WORKSPACE__/tests/fixtures/config/__TEMPORARY_FILE_PREFIX__sample.html',
+      },
+    ],
+    viewerInput: {
+      type: 'webpub',
+      manifestPath:
+        '__WORKSPACE__/tests/fixtures/config/__TEMPORARY_FILE_PREFIX__publication.json',
+      needToGenerateManifest: true,
+    },
+    exportAliases: expect.arrayContaining([
+      {
+        source:
+          '__WORKSPACE__/tests/fixtures/config/__TEMPORARY_FILE_PREFIX__sample.html',
+        target: '__WORKSPACE__/tests/fixtures/config/sample.html',
+      },
+      {
+        source:
+          '__WORKSPACE__/tests/fixtures/config/__TEMPORARY_FILE_PREFIX__publication.json',
+        target: '__WORKSPACE__/tests/fixtures/config/publication.json',
+      },
+    ]),
+  });
 });
 
 it('imports single html file', async () => {
-  const config = await getMergedConfig([resolveFixture('config/sample.html')]);
+  const config = await getTaskConfig(
+    ['build', 'sample.html'],
+    resolveFixture('config'),
+  );
   maskConfig(config);
-  expect(config).toMatchSnapshot();
+  expect(config).toMatchObject({
+    viewerInput: {
+      type: 'webbook',
+      webbookEntryUrl: '/vivliostyle/sample.html',
+    },
+  });
 });
 
 it('yields a config with single input and vivliostyle config', async () => {
-  const config = await getMergedConfig([
-    resolveFixture('config/nestedDir/01.md'),
-    '-c',
-    configFilePath['valid.1'],
-  ]);
+  const config = await getTaskConfig(
+    ['build', 'nestedDir/01.md'],
+    resolveFixture('config'),
+    validConfigData,
+  );
   maskConfig(config);
-  assertSingleItem(config);
-  expect(config.entries[0].target).toMatch(
-    /^__WORKSPACE__\/tests\/fixtures\/config\/workspaceDir\/nestedDir\/\.vs-.+\.01\.html$/,
-  );
-  expect(config.manifestPath).toMatch(
-    /^__WORKSPACE__\/tests\/fixtures\/config\/workspaceDir\/\.vs-.+\.publication\.json$/,
-  );
-  config.exportAliases.forEach((alias) => {
-    alias.source = alias.source
-      .replace(config.entries[0].target as string, '__SNIP__')
-      .replace(config.manifestPath as string, '__SNIP__');
+  expect(config).toMatchObject({
+    entries: [
+      {
+        target: '__WORKSPACE__/tests/fixtures/config/nestedDir/vvv.01.html',
+      },
+    ],
+    viewerInput: {
+      type: 'webpub',
+      manifestPath:
+        '__WORKSPACE__/tests/fixtures/config/nestedDir/vvv.publication.json',
+      needToGenerateManifest: true,
+    },
   });
-  config.manifestPath = '__SNIP__';
-  config.entries[0].target = '__SNIP__';
-  expect(config).toMatchSnapshot();
 });
 
 it('imports a EPUB file', async () => {
-  const config = await getMergedConfig([
-    resolveFixture('epubs/adaptive.epub'),
-    '-o',
-    'epub.pdf',
-  ]);
+  const config = await getTaskConfig(
+    ['build', 'adaptive.epub', '-o', 'epub.pdf'],
+    resolveFixture('epubs'),
+  );
   maskConfig(config);
-  assertSingleItem(config);
-  expect(config.epubOpfPath).toMatch(/OPS\/content\.opf$/);
-  config.epubOpfPath = '__SNIP__';
-  expect(config).toMatchSnapshot();
+  expect(config).toMatchObject({
+    viewerInput: {
+      type: 'epub',
+      epubPath: '__WORKSPACE__/tests/fixtures/epubs/adaptive.epub',
+      epubTmpOutputDir:
+        '__WORKSPACE__/tests/fixtures/epubs/__TEMPORARY_FILE_PREFIX__adaptive.epub',
+    },
+  });
 });
 
 it('imports a EPUB OPF file', async () => {
-  const config = await getMergedConfig([
-    resolveFixture('epubs/adaptive/OPS/content.opf'),
-    '-o',
-    'epub-opf.pdf',
-  ]);
+  const config = await getTaskConfig(
+    ['build', 'adaptive/OPS/content.opf', '-o', 'epub-opf.pdf'],
+    resolveFixture('epubs'),
+  );
   maskConfig(config);
-  expect(config).toMatchSnapshot();
+  expect(config).toMatchObject({
+    viewerInput: {
+      type: 'epub-opf',
+      epubOpfPath:
+        '__WORKSPACE__/tests/fixtures/epubs/adaptive/OPS/content.opf',
+    },
+  });
 });
 
 it('imports a webbook compliant to W3C Web publication', async () => {
-  const config = await getMergedConfig([
-    resolveFixture('webbooks/w3c-webpub/publication.json'),
-    '-o',
-    'w3c-webpub',
-  ]);
+  const config = await getTaskConfig(
+    ['build', 'w3c-webpub/publication.json', '-o', 'w3c-webpub'],
+    resolveFixture('webbooks'),
+  );
   maskConfig(config);
-  expect(config).toMatchSnapshot();
+  expect(config).toMatchObject({
+    viewerInput: {
+      type: 'webpub',
+      manifestPath:
+        '__WORKSPACE__/tests/fixtures/webbooks/w3c-webpub/publication.json',
+      needToGenerateManifest: false,
+    },
+  });
 });
 
 it('imports a webbook compliant to Readium Web publication', async () => {
-  const config = await getMergedConfig([
-    resolveFixture('webbooks/readium-webpub/manifest.jsonld'),
-    '-o',
-    'readium-webpub',
-  ]);
+  const config = await getTaskConfig(
+    ['build', 'readium-webpub/manifest.jsonld', '-o', 'readium-webpub'],
+    resolveFixture('webbooks'),
+  );
   maskConfig(config);
-  expect(config).toMatchSnapshot();
+  expect(config).toMatchObject({
+    viewerInput: {
+      type: 'webpub',
+      manifestPath:
+        '__WORKSPACE__/tests/fixtures/webbooks/readium-webpub/manifest.jsonld',
+      needToGenerateManifest: false,
+    },
+  });
 });
 
 it('imports a https URL', async () => {
-  const config = await getMergedConfig([
-    'https://vivliostyle.github.io/vivliostyle_doc/ja/vivliostyle-user-group-vol1/',
-  ]);
+  const config = await getTaskConfig(
+    [
+      'build',
+      'https://vivliostyle.github.io/vivliostyle_doc/ja/vivliostyle-user-group-vol1/',
+    ],
+    resolveFixture('config'),
+  );
   maskConfig(config);
-  expect(config).toMatchSnapshot();
+  expect(config).toMatchObject({
+    viewerInput: {
+      type: 'webbook',
+      webbookEntryUrl:
+        'https://vivliostyle.github.io/vivliostyle_doc/ja/vivliostyle-user-group-vol1/',
+    },
+  });
 });
 
 it('yields a config from frontmatter', async () => {
-  const config = await getMergedConfig([
-    resolveFixture('config/frontmatter.md'),
-  ]);
+  const config = await getTaskConfig(
+    ['build', 'frontmatter.md'],
+    resolveFixture('config'),
+  );
   maskConfig(config);
-  assertSingleItem(config);
   expect(config.entries[0].title).toBe('Frontmatter');
 });
 
-it('parse array of config', async () => {
-  const validConfig = await getMergedConfig(['-c', configFilePath['valid.4']]);
-  maskConfig(validConfig);
-  assertArray(validConfig);
-  expect(validConfig).toHaveLength(3);
-  expect(validConfig[0]).toMatchSnapshot('valid.1.config.js');
-  expect(validConfig[1]).toMatchSnapshot('valid.2.config.js');
-  expect(validConfig[2]).toMatchSnapshot('valid.3.config.js');
-});
-
 it('allow a loose specifier of a theme direcory', async () => {
-  const validConfig = await getMergedConfig(['-c', configFilePath['valid.5']]);
+  const validConfig = await getTaskConfig(['build'], resolveFixture('config'), {
+    entry: 'manuscript.md',
+    output: 'output1.pdf',
+    theme: 'themes/foo',
+  });
   maskConfig(validConfig);
-  expect(validConfig).toMatchSnapshot('valid.5.config.js');
+  expect(validConfig).toMatchObject({
+    entries: [
+      {
+        themes: [
+          {
+            type: 'package',
+            name: 'foo',
+            specifier: '__WORKSPACE__/tests/fixtures/config/themes/foo',
+            location:
+              '__WORKSPACE__/tests/fixtures/config/.vivliostyle/themes/node_modules/foo',
+          },
+        ],
+      },
+    ],
+  });
 });

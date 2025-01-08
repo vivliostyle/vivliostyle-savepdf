@@ -15,158 +15,162 @@ import { VivliostyleConfigSchema } from '@vivliostyle/cli';
 
 ```ts
 type VivliostyleConfigSchema =
-  | VivliostyleConfigEntry[]
-  | VivliostyleConfigEntry;
+  | BuildTask[]
+  | BuildTask;
 ```
 
-### VivliostyleConfigEntry
+### BuildTask
 
 #### Properties
 
-- `VivliostyleConfigEntry`
-  - `entry` (Array | Object | string)
-    - Entry file(s) of document.
-  - `title` string
-    - Title
-  - `author` string
-    - Author
-  - `theme` (Array | Object | string)
-    - Theme package path(s) or URL(s) of css file.
-  - `entryContext` string
-    - Directory of referencing entry file(s).
-  - `output` (Array | Object | string)
-    - Options about outputs.
-  - `workspaceDir` string
-    - Specify the directory where the intermediate files (manuscript HTMLs, publication.json, etc.) are saved.
-      If not specified, theses files are saved in the same directory as the input file.
-  - ~~`includeAssets`~~ _Deprecated_
-    - Use `copyAsset.includes` instead
-  - `copyAsset` Object
-    - Options about asset files to be copied when exporting output.
-  - `size` string
-    - Output pdf size. (default: `letter`)
-      - preset: `A5`, `A4`, `A3`, `B5`, `B4`, `JIS-B5`, `JIS-B4`, `letter`, `legal`, `ledger`
-      - custom(comma separated): `182mm,257mm` or `8.5in,11in`
-  - `pressReady` boolean
-    - Make generated PDF compatible with press ready PDF/X-1a. (default: `false`)
-      This option is equivalent with `"preflight": "press-ready"`
-  - `language` string
-    - Language
-  - `readingProgression` ("ltr" | "rtl")
-    - Specify the reading progression of the document. This is typically determined automatically by the CSS writing-mode, so use this option only if you need to set it explicitly.
-  - `toc` (Object | boolean | string)
-    - Options about Table of Contents (ToC) documents.
-  - ~~`tocTitle`~~ _Deprecated_
-    - Use `toc.title` instead
-  - `cover` (Object | string)
-    - Options about cover images and cover page documents.
-  - `timeout` number
-    - Timeout limit for waiting Vivliostyle process (ms). (default: `120000`)
-  - `documentProcessor` Function
-    - Custom function to provide unified Processor from markdown into html
-  - `vfm` Object
-    - Option for convert Markdown to a stringify (HTML).
-  - `image` string
-    - Specify a docker image to render.
-  - `http` boolean
-    - Launch an HTTP server hosting contents instead of file protocol.
-      It is useful that requires CORS such as external web fonts.
-  - `viewer` string
-    - Specify a URL of displaying viewer instead of vivliostyle-cli's one.
-      It is useful that using own viewer that has staging features. (ex: `https://vivliostyle.vercel.app/`)
-  - `viewerParam` string
-    - specify viewer parameters. (ex: `allowScripts=false&pixelRatio=16`)
-  - `browser` ("chromium" | "firefox" | "webkit")
-    - EXPERIMENTAL SUPPORT: Specify a browser type to launch Vivliostyle viewer.
-      Currently, Firefox and Webkit support preview command only!
+- `BuildTask`
+
+  - `entry`: (string | [ContentsEntryConfig](#contentsentryconfig) | [CoverEntryConfig](#coverentryconfig) | [ArticleEntryConfig](#articleentryconfig))[] | [ArticleEntryConfig](#articleentryconfig) | string  
+    Entry file(s) of the document.
+
+  - `title`: string  
+    Title of the document.
+
+  - `author`: string  
+    Author of the document.
+
+  - `theme`: ([ThemeConfig](#themeconfig) | string)[] | [ThemeConfig](#themeconfig) | string  
+    Theme package path(s) or URL(s) of the CSS file.
+
+  - `entryContext`: string  
+    Directory containing the referenced entry file(s).
+
+  - `output`: ([OutputConfig](#outputconfig) | string)[] | [OutputConfig](#outputconfig) | string  
+    Output options.
+
+  - `workspaceDir`: string  
+    Directory where intermediate files (e.g., manuscript HTMLs, publication.json) are saved. (default: `.vivliostyle`)
+
+  - ~~`includeAssets`~~ _Deprecated_  
+    Use `copyAsset.includes` instead.
+
+  - `copyAsset`: [CopyAssetConfig](#copyassetconfig)  
+    Options for asset files to be copied when exporting output.
+
+  - `size`: string  
+    PDF output size. (default: `letter`)
+    - Preset: `A5`, `A4`, `A3`, `B5`, `B4`, `JIS-B5`, `JIS-B4`, `letter`, `legal`, `ledger`
+    - Custom (comma-separated): `182mm,257mm` or `8.5in,11in`
+
+  - `pressReady`: boolean  
+    Generate a press-ready PDF compatible with PDF/X-1a. (default: `false`)
+    This option is equivalent to setting `"preflight": "press-ready"`.
+
+  - `language`: string  
+    Language of the document.
+
+  - `readingProgression`: "ltr" | "rtl"  
+    Specifies the reading progression of the document.
+    This is typically determined automatically by the CSS writing-mode.
+    Use this option only if explicit configuration is needed.
+
+  - `toc`: [TocConfig](#tocconfig) | boolean | string  
+    Options for Table of Contents (ToC) documents.
+
+  - ~~`tocTitle`~~ _Deprecated_  
+    Use `toc.title` instead
+
+  - `cover`: [CoverConfig](#coverconfig) | string  
+    Options for cover images and cover page documents.
+
+  - `timeout`: number  
+    Timeout limit for waiting for the Vivliostyle process (in ms). (default: `120000`)
+
+  - `documentProcessor`: (option: import("@vivliostyle/vfm").StringifyMarkdownOptions, metadata: import("@vivliostyle/vfm").Metadata) => import("unified").Processor  
+    Custom function to provide a unified Processor for converting markdown to HTML.
+
+  - `vfm`: [VfmConfig](#vfmconfig)  
+    Options for converting Markdown into a stringified format (HTML).
+
+  - `image`: string  
+    Docker image used for rendering.
+
+  - ~~`http`~~ _Deprecated_  
+    This option is enabled by default, and the file protocol is no longer supported.
+
+  - `viewer`: string  
+    URL of a custom viewer to display content instead of the default Vivliostyle CLI viewer.
+    Useful for using a custom viewer with staging features (e.g., `https://vivliostyle.vercel.app/`).
+
+  - `viewerParam`: string  
+    Parameters for the Vivliostyle viewer (e.g., `allowScripts=false&pixelRatio=16`).
+
+  - `browser`: "chromium" | "firefox" | "webkit"  
+    EXPERIMENTAL SUPPORT: Specifies the browser type for launching the Vivliostyle viewer.
+    Currently, Firefox and Webkit support only the preview command.
+
+  - `base`: string  
+    Base path of the served documents. (default: `/vivliostyle`)
+
+  - `server`: [ServerConfig](#serverconfig)  
+    Options for the preview server.
+
+  - `static`: {[key: (string)]: (string)[] | string}  
+    Specifies static files to be served by the preview server.
+    ```js
+    export default {
+      static: {
+        '/static': 'path/to/static',
+        '/': ['root1', 'root2'],
+      },
+    };
+    ```
+
+  - `temporaryFilePrefix`: string  
+    Prefix for temporary file names.
+
+  - `vite`: import("vite").UserConfig  
+    Configuration options for the Vite server.
+
+  - `viteConfigFile`: string | boolean  
+    Path to the Vite config file.
+    If a falsy value is provided, Vivliostyle CLI ignores the existing Vite config file.
 
 #### Type definition
 
 ```ts
-type VivliostyleConfigEntry = {
+type BuildTask = {
   entry:
     | (
         | string
-        | ContentsEntryObject
-        | CoverEntryObject
-        | ArticleEntryObject
+        | ContentsEntryConfig
+        | CoverEntryConfig
+        | ArticleEntryConfig
       )[]
-    | ArticleEntryObject
+    | ArticleEntryConfig
     | string;
   title?: string;
   author?: string;
   theme?:
-    | (ThemeObject | string)[]
-    | ThemeObject
+    | (ThemeConfig | string)[]
+    | ThemeConfig
     | string;
   entryContext?: string;
   output?:
-    | (OutputObject | string)[]
-    | OutputObject
+    | (OutputConfig | string)[]
+    | OutputConfig
     | string;
   workspaceDir?: string;
   includeAssets?: string[] | string;
-  copyAsset?: {
-    includes?: string[];
-    excludes?: string[];
-    includeFileExtensions?: string[];
-    excludeFileExtensions?: string[];
-  };
+  copyAsset?: CopyAssetConfig;
   size?: string;
   pressReady?: boolean;
   language?: string;
   readingProgression?: "ltr" | "rtl";
-  toc?:
-    | {
-        title?: string;
-        htmlPath?: string;
-        sectionDepth?: number;
-        transformDocumentList?: (
-          nodeList: StructuredDocument[],
-        ) => (
-          propsList: {
-            children: any;
-          }[],
-        ) => any;
-        transformSectionList?: (
-          nodeList: StructuredDocumentSection[],
-        ) => (
-          propsList: {
-            children: any;
-          }[],
-        ) => any;
-      }
-    | boolean
-    | string;
+  toc?: TocConfig | boolean | string;
   tocTitle?: string;
-  cover?:
-    | {
-        src: string;
-        name?: string;
-        htmlPath?: string | boolean;
-      }
-    | string;
+  cover?: CoverConfig | string;
   timeout?: number;
   documentProcessor?: (
     option: import("@vivliostyle/vfm").StringifyMarkdownOptions,
     metadata: import("@vivliostyle/vfm").Metadata,
   ) => import("unified").Processor;
-  vfm?: {
-    style?: string[] | string;
-    partial?: boolean;
-    title?: string;
-    language?: string;
-    replace?: {
-      test: RegExp;
-      match: (
-        result: RegExpMatchArray,
-        h: any,
-      ) => Object | string;
-    }[];
-    hardLineBreaks?: boolean;
-    disableFormatHtml?: boolean;
-    math?: boolean;
-  };
+  vfm?: VfmConfig;
   image?: string;
   http?: boolean;
   viewer?: string;
@@ -175,37 +179,52 @@ type VivliostyleConfigEntry = {
     | "chromium"
     | "firefox"
     | "webkit";
+  base?: string;
+  server?: ServerConfig;
+  static?: {
+    [key: string]: string[] | string;
+  };
+  temporaryFilePrefix?: string;
+  vite?: import("vite").UserConfig;
+  viteConfigFile?: string | boolean;
 };
 ```
 
-### ContentsEntryObject
+### ContentsEntryConfig
 
 #### Properties
 
-- `ContentsEntryObject`
-  - `rel` "contents"
-  - `path` string
-  - `output` string
-  - `title` string
-  - `theme` (Array | Object | string)
-  - `pageBreakBefore` ("left" | "right" | "recto" | "verso")
-    - Specify the page break position before this document.
-      It is useful when you want to specify which side a first page of the document should be placed on a two-page spread.
-  - `pageCounterReset` number
-    - Reset the starting page number of this document by the specified integer.
-      It is useful when you want to control page numbers when including a page.
+- `ContentsEntryConfig`
+
+  - `rel`: "contents"
+
+  - `path`: string
+
+  - `output`: string
+
+  - `title`: string
+
+  - `theme`: ([ThemeConfig](#themeconfig) | string)[] | [ThemeConfig](#themeconfig) | string
+
+  - `pageBreakBefore`: ("left" | "right" | "recto" | "verso")  
+    Specifies the page break position before this document.
+    Useful for determining which side the first page of the document should be placed on in a two-page spread.
+
+  - `pageCounterReset`: number  
+    Resets the starting page number of this document to the specified integer.
+    Useful for controlling page numbers when including a page.
 
 #### Type definition
 
 ```ts
-type ContentsEntryObject = {
+type ContentsEntryConfig = {
   rel: "contents";
   path?: string;
   output?: string;
   title?: string;
   theme?:
-    | (ThemeObject | string)[]
-    | ThemeObject
+    | (ThemeConfig | string)[]
+    | ThemeConfig
     | string;
   pageBreakBefore?:
     | "left"
@@ -216,55 +235,65 @@ type ContentsEntryObject = {
 };
 ```
 
-### ThemeObject
+### ThemeConfig
 
 #### Properties
 
-- `ThemeObject`
-  - `specifier` string
-    - Specifier name of importing theme package or a path of CSS file.
-      - A npm-style package argument is allowed (ex: `@vivliostyle/theme-academic@1` `./local-pkg`)
-      - A URL or a local path of CSS is allowed (ex: `./style.css`, `https://example.com/style.css`)
-  - `import` (Array | string)
-    - Importing CSS path(s) of the package.
-      Specify this if you want to import other than the default file.
+- `ThemeConfig`
+
+  - `specifier`: string  
+    The specifier name for importing the theme package or the path to a CSS file.
+    - An npm-style package argument is allowed (e.g., `@vivliostyle/theme-academic@1`, `./local-pkg`).
+    - A URL or a local path to a CSS file is allowed (e.g., `./style.css`, `https://example.com/style.css`).
+
+  - `import`: (string)[] | string  
+    The path(s) to the CSS file(s) to import from the package.
+    Specify this if you want to import files other than the default.
 
 #### Type definition
 
 ```ts
-type ThemeObject = {
+type ThemeConfig = {
   specifier: string;
   import?: string[] | string;
 };
 ```
 
-### CoverEntryObject
+### CoverEntryConfig
 
 #### Properties
 
-- `CoverEntryObject`
-  - `rel` "cover"
-  - `path` string
-  - `output` string
-  - `title` string
-  - `theme` (Array | Object | string)
-  - `imageSrc` string
-  - `imageAlt` string
-  - `pageBreakBefore` ("left" | "right" | "recto" | "verso")
-    - Specify the page break position before this document.
-      It is useful when you want to specify which side a first page of the document should be placed on a two-page spread.
+- `CoverEntryConfig`
+
+  - `rel`: "cover"
+
+  - `path`: string
+
+  - `output`: string
+
+  - `title`: string
+
+  - `theme`: ([ThemeConfig](#themeconfig) | string)[] | [ThemeConfig](#themeconfig) | string
+
+  - `imageSrc`: string
+
+  - `imageAlt`: string
+
+  - `pageBreakBefore`: ("left" | "right" | "recto" | "verso")  
+    Specifies the page break position before this document.
+    Useful for determining which side the first page of the document should be placed on in a two-page spread.
 
 #### Type definition
 
 ```ts
-type CoverEntryObject = {
+type CoverEntryConfig = {
   rel: "cover";
   path?: string;
   output?: string;
   title?: string;
   theme?:
-    | (ThemeObject | string)[]
-    | ThemeObject
+    | (ThemeConfig | string)[]
+    | ThemeConfig
     | string;
   imageSrc?: string;
   imageAlt?: string;
@@ -276,57 +305,68 @@ type CoverEntryObject = {
 };
 ```
 
-### ArticleEntryObject
+### ArticleEntryConfig
 
 #### Properties
 
-- `ArticleEntryObject`
-  - `path` string
-  - `output` string
-  - `title` string
-  - `theme` (Array | Object | string)
-  - `encodingFormat` string
-  - `rel` (Array | string)
+- `ArticleEntryConfig`
+
+  - `path`: string
+
+  - `output`: string
+
+  - `title`: string
+
+  - `theme`: ([ThemeConfig](#themeconfig) | string)[] | [ThemeConfig](#themeconfig) | string
+
+  - `encodingFormat`: string
+
+  - `rel`: (string)[] | string
 
 #### Type definition
 
 ```ts
-type ArticleEntryObject = {
+type ArticleEntryConfig = {
   path: string;
   output?: string;
   title?: string;
   theme?:
-    | (ThemeObject | string)[]
-    | ThemeObject
+    | (ThemeConfig | string)[]
+    | ThemeConfig
     | string;
   encodingFormat?: string;
   rel?: string[] | string;
 };
 ```
 
-### OutputObject
+### OutputConfig
 
 #### Properties
 
-- `OutputObject`
-  - `path` string
-    - Specify output file name or directory [`<title>.pdf`].
-  - `format` string
-    - Specify output format.
-  - `renderMode` ("local" | "docker")
-    - if `docker` is set, Vivliostyle try to render PDF on Docker container [`local`].
-  - `preflight` ("press-ready" | "press-ready-local")
-    - Apply the process to generate PDF for printing.
-  - `preflightOption` Array
-    - Options for preflight process (ex: `gray-scale`, `enforce-outline`).
-      Please refer the document of press-ready for further information. https://github.com/vibranthq/press-ready
+- `OutputConfig`
+
+  - `path`: string  
+    Specifies the output file name or directory. (default: `<title>.pdf`)
+
+  - `format`: "pdf" | "epub" | "webpub"  
+    Specifies the output format.
+
+  - `renderMode`: "local" | "docker"  
+    If set to `docker`, Vivliostyle will render the PDF using a Docker container. (default: `local`)
+
+  - `preflight`: "press-ready" | "press-ready-local"  
+    Apply the process to generate a print-ready PDF.
+
+  - `preflightOption`: (string)[]  
+    Options for the preflight process (e.g., `gray-scale`, `enforce-outline`).
+    Refer to the press-ready documentation for more information: [press-ready](https://github.com/vibranthq/press-ready)
 
 #### Type definition
 
 ```ts
-type OutputObject = {
+type OutputConfig = {
   path: string;
-  format?: string;
+  format?: "pdf" | "epub" | "webpub";
   renderMode?: "local" | "docker";
   preflight?:
     | "press-ready"
@@ -335,15 +375,89 @@ type OutputObject = {
 };
 ```
 
+### CopyAssetConfig
+
+#### Properties
+
+- `CopyAssetConfig`
+
+  - `includes`: (string)[]  
+    Directories and files to include as asset files. Supports wildcard characters for glob patterns.
+
+  - `excludes`: (string)[]  
+    Directories and files to exclude from asset files. Supports wildcard characters for glob patterns.
+
+  - `includeFileExtensions`: (string)[]  
+    File extensions to include as asset files. (default: `[png, jpg, jpeg, svg, gif, webp, apng, ttf, otf, woff, woff2]`)
+
+  - `excludeFileExtensions`: (string)[]  
+    File extensions to exclude from asset files.
+
+#### Type definition
+
+```ts
+type CopyAssetConfig = {
+  includes?: string[];
+  excludes?: string[];
+  includeFileExtensions?: string[];
+  excludeFileExtensions?: string[];
+};
+```
+
+### TocConfig
+
+#### Properties
+
+- `TocConfig`
+
+  - `title`: string  
+    Title of the generated ToC document.
+
+  - `htmlPath`: string  
+    Location where the generated ToC document will be saved. (default: `index.html`)
+
+  - `sectionDepth`: number  
+    Depth of sections to include in the ToC document. (default: `0`)
+
+  - `transformDocumentList`: (nodeList: [StructuredDocument](#structureddocument)[]) => (propsList: { children: any }[]) => any  
+    Function to transform the document list.
+
+  - `transformSectionList`: (nodeList: [StructuredDocumentSection](#structureddocumentsection)[]) => (propsList: { children: any }[]) => any  
+    Function to transform the section list.
+
+#### Type definition
+
+```ts
+type TocConfig = {
+  title?: string;
+  htmlPath?: string;
+  sectionDepth?: number;
+  transformDocumentList?: (
+    nodeList: StructuredDocument[],
+  ) => (
+    propsList: { children: any }[],
+  ) => any;
+  transformSectionList?: (
+    nodeList: StructuredDocumentSection[],
+  ) => (
+    propsList: { children: any }[],
+  ) => any;
+};
+```
+
 ### StructuredDocument
 
 #### Properties
 
 - `StructuredDocument`
-  - `title` string
-  - `href` string
-  - `children` Array
-  - `sections` Array
+
+  - `title`: string
+
+  - `href`: string
+
+  - `children`: ([StructuredDocument](#structureddocument))[]
+
+  - `sections`: ([StructuredDocumentSection](#structureddocumentsection))[]
 
 #### Type definition
 
@@ -361,12 +475,18 @@ type StructuredDocument = {
 #### Properties
 
 - `StructuredDocumentSection`
-  - `headingHtml` string
-  - `headingText` string
-  - `level` number
-  - `children` Array
-  - `href` string
-  - `id` string
+
+  - `headingHtml`: string
+
+  - `headingText`: string
+
+  - `level`: number
+
+  - `children`: ([StructuredDocumentSection](#structureddocumentsection))[]
+
+  - `href`: string
+
+  - `id`: string
 
 #### Type definition
 
@@ -378,6 +498,114 @@ type StructuredDocumentSection = {
   children: StructuredDocumentSection[];
   href?: string;
   id?: string;
+};
+```
+
+### CoverConfig
+
+#### Properties
+
+- `CoverConfig`
+
+  - `src`: string  
+    Path to the cover image for the cover page.
+
+  - `name`: string  
+    Alternative text for the cover image.
+
+  - `htmlPath`: string | boolean  
+    Path where the generated cover document will be saved. (default: `cover.html`)
+    If set to a falsy value, the cover document will not be generated.
+
+#### Type definition
+
+```ts
+type CoverConfig = {
+  src: string;
+  name?: string;
+  htmlPath?: string | boolean;
+};
+```
+
+### VfmConfig
+
+#### Properties
+
+- `VfmConfig`
+
+  - `style`: (string)[] | string  
+    Path(s) or URL(s) to custom stylesheets.
+
+  - `partial`: boolean  
+    Output markdown fragments instead of a full document.
+
+  - `title`: string  
+    Title of the document (ignored in partial mode).
+
+  - `language`: string  
+    Language of the document (ignored in partial mode).
+
+  - `replace`: ({test: RegExp; match: (result: RegExpMatchArray, h: any) => Object | string})[]  
+    Handlers for replacing matched HTML strings.
+
+  - `hardLineBreaks`: boolean  
+    Insert `<br>` tags at hard line breaks without requiring spaces.
+
+  - `disableFormatHtml`: boolean  
+    Disable automatic HTML formatting.
+
+  - `math`: boolean  
+    Enable support for math syntax.
+
+#### Type definition
+
+```ts
+type VfmConfig = {
+  style?: string[] | string;
+  partial?: boolean;
+  title?: string;
+  language?: string;
+  replace?: {
+    test: RegExp;
+    match: (
+      result: RegExpMatchArray,
+      h: any,
+    ) => Object | string;
+  }[];
+  hardLineBreaks?: boolean;
+  disableFormatHtml?: boolean;
+  math?: boolean;
+};
+```
+
+### ServerConfig
+
+#### Properties
+
+- `ServerConfig`
+
+  - `host`: boolean | string  
+    IP address the server should listen on.
+    Set to `true` to listen on all addresses.
+    (default: `true` if a PDF build with Docker render mode is required, otherwise `false`)
+
+  - `port`: number  
+    Port the server should listen on. (default: `13000`)
+
+  - `proxy`: {[key: (string)]: import("vite").ProxyOptions | string}  
+    Custom proxy rules for the Vivliostyle preview server.
+
+#### Type definition
+
+```ts
+type ServerConfig = {
+  host?: boolean | string;
+  port?: number;
+  proxy?: {
+    [key: string]:
+      | import("vite").ProxyOptions
+      | string;
+  };
 };
 ```
 <!-- END config API -->

@@ -1,30 +1,23 @@
 import { Command, Option } from 'commander';
-import { BuildCliFlags } from '../build.js';
-import { validateTimeoutFlag } from '../input/config.js';
-import {
-  OutputFormat,
-  checkOutputFormat,
-  detectOutputFormat,
-} from '../output/output-types.js';
 
 export function setupBuildParserProgram(): Command {
   // Provide an order-sensitive command parser
   // ex: "-o foo -o bar -f baz"
-  //    → [{output: "foo"}, {output:"bar", format: "baz"}]
+  //    → [{path: "foo"}, {path:"bar", format: "baz"}]
   // ex: "-f foo -o bar -o baz -f piyo"
-  //    → [{output: "bar", format: "foo"}, {output: "baz", format: "piyo"}]
+  //    → [{path: "bar", format: "foo"}, {path: "baz", format: "piyo"}]
   const targets: {
-    output?: string;
+    path?: string;
     format?: string;
   }[] = [];
   const outputOptionProcessor = (
     value: string,
     previous?: string[],
   ): string[] => {
-    if (targets.length === 0 || 'output' in targets[targets.length - 1]) {
-      targets.push({ output: value });
+    if (targets.length === 0 || 'path' in targets[targets.length - 1]) {
+      targets.push({ path: value });
     } else {
-      targets[targets.length - 1].output = value;
+      targets[targets.length - 1].path = value;
     }
     return [...(previous || []), value];
   };
@@ -94,7 +87,7 @@ This option is equivalent with "--preflight press-ready"`,
       `timeout limit for waiting Vivliostyle process [120]`,
       validateTimeoutFlag,
     )
-    .option('-T, --theme <theme>', 'theme path or package name')
+    .option('-T, --theme <theme...>', 'theme path or package name')
     .option('--title <title>', 'title')
     .option('--author <author>', 'author')
     .option('-l, --language <language>', 'language')
@@ -131,11 +124,6 @@ https://github.com/vibranthq/press-ready`,
       'specify a path of executable browser you installed',
     )
     .option('--image <image>', 'specify a docker image to render')
-    .option(
-      '--http',
-      `launch an HTTP server hosting contents instead of file protocol
-It is useful that requires CORS such as external web fonts.`,
-    )
     .option(
       '--viewer <URL>',
       `specify a URL of displaying viewer instead of vivliostyle-cli's one
@@ -191,34 +179,25 @@ It is useful that using own viewer that has staging features. (ex: https://vivli
         `true to ignore HTTPS errors when Playwright browser opens a new page`,
       ),
     )
-    .addOption(new Option('--bypassed-pdf-builder-option <json>').hideHelp())
+    .option('--no-enable-static-serve', 'disable static file serving')
     // TODO: Remove it in the next major version up
     .addOption(new Option('--executable-chromium <path>').hideHelp())
     .addOption(new Option('--verbose').hideHelp())
-    .action((_arg: any, option: BuildCliFlags) => {
-      option.targets = inferenceTargetsOption(targets);
+    .addOption(new Option('--http').hideHelp())
+    .action((_arg, option) => {
+      let invalid = targets.find((it) => !('path' in it));
+      if (invalid) {
+        // -f is an optional option but -o is required one
+        throw new Error(
+          `Couldn't find the output option corresponding --format ${invalid.format} option. Please check the command options.`,
+        );
+      }
+      option.output = targets;
     });
 
   return program;
 }
 
-export function inferenceTargetsOption(
-  parsed: {
-    output?: string;
-    format?: string;
-  }[],
-): Pick<OutputFormat, 'path' | 'format'>[] {
-  return parsed.map(({ output, format }) => {
-    if (!output) {
-      // -f is an optional option but -o is required one
-      throw new Error(
-        `Couldn't find the output option corresponding --format ${format} option. Please check the command options.`,
-      );
-    }
-    const detectedFormat = format ?? detectOutputFormat(output);
-    if (!checkOutputFormat(detectedFormat)) {
-      throw new Error(`Unknown format: ${format}`);
-    }
-    return { path: output, format: detectedFormat };
-  });
+function validateTimeoutFlag(val: string) {
+  return Number.isFinite(+val) && +val > 0 ? +val * 1000 : undefined;
 }

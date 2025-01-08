@@ -3,40 +3,66 @@ import { Volume } from 'memfs/lib/volume.js';
 import assert from 'node:assert';
 import { fileURLToPath } from 'node:url';
 import upath from 'upath';
+import * as v from 'valibot';
 import { setupBuildParserProgram } from '../src/commands/build.parser.js';
 import {
-  MergedConfig,
-  collectVivliostyleConfig,
-  mergeConfig,
-} from '../src/input/config.js';
+  parseFlagsToInlineConfig,
+  setupConfigFromFlags,
+} from '../src/commands/cli-flags.js';
+import { setupInitParserProgram } from '../src/commands/init.parser.js';
+import { setupPreviewParserProgram } from '../src/commands/preview.parser.js';
+import { mergeInlineConfig } from '../src/config/merge.js';
+import { build } from '../src/core/build.js';
+import { init } from '../src/core/init.js';
+import { preview } from '../src/core/preview.js';
+import { ResolvedTaskConfig, resolveTaskConfig } from './../src/config/resolve';
+import { LogLevel, VivliostyleConfigSchema } from './../src/config/schema';
 
 export const rootPath = upath.join(fileURLToPath(import.meta.url), '../..');
 
-export const getMergedConfig = async (
-  args: string[],
-): Promise<MergedConfig | MergedConfig[]> => {
-  const program = setupBuildParserProgram().parse([
-    'vivliostyle',
-    'build',
-    ...args,
-  ]);
-  const options = program.opts();
-  const { vivliostyleConfig, vivliostyleConfigPath, cliFlags } =
-    await collectVivliostyleConfig({
-      ...program.opts(),
-      input: program.args?.[0],
-      configPath: options.config,
-      targets: options.targets,
-    });
-  const context = vivliostyleConfig
-    ? upath.dirname(vivliostyleConfigPath)
-    : upath.join(rootPath, 'tests');
-  const config = await Promise.all(
-    (vivliostyleConfig ?? [vivliostyleConfig]).map((entry) =>
-      mergeConfig(cliFlags, entry, context),
-    ),
+export const runCommand = async (
+  args: ['init' | 'build' | 'preview', ...string[]],
+  {
+    cwd,
+    config,
+    logLevel = 'silent',
+  }: { cwd: string; config?: VivliostyleConfigSchema; logLevel?: LogLevel },
+) => {
+  let inlineConfig = parseFlagsToInlineConfig(
+    ['vivliostyle', ...args],
+    {
+      init: setupInitParserProgram,
+      build: setupBuildParserProgram,
+      preview: setupPreviewParserProgram,
+    }[args[0]],
   );
-  return config.length > 1 ? config : config[0];
+  inlineConfig = { ...inlineConfig, configData: config, cwd, logLevel };
+  await { init, build, preview }[args[0]](inlineConfig);
+};
+
+export const getTaskConfig = async (
+  args: string[],
+  cwd: string,
+  config?: VivliostyleConfigSchema,
+): Promise<ResolvedTaskConfig> => {
+  const inlineConfig = parseFlagsToInlineConfig(
+    ['vivliostyle', ...args],
+    setupBuildParserProgram,
+  );
+  let vivliostyleConfig = config
+    ? v.parse(VivliostyleConfigSchema, config)
+    : setupConfigFromFlags(inlineConfig);
+  vivliostyleConfig = mergeInlineConfig(vivliostyleConfig, {
+    ...inlineConfig,
+    cwd,
+    quick: false,
+  });
+
+  const resolvedConfig = resolveTaskConfig(
+    vivliostyleConfig.tasks[0],
+    vivliostyleConfig.inlineOptions,
+  );
+  return resolvedConfig;
 };
 
 export const maskConfig = (obj: any) => {
@@ -47,17 +73,20 @@ export const maskConfig = (obj: any) => {
       obj[k] = '__EXECUTABLE_CHROMIUM_PATH__';
     } else if (k === 'image') {
       obj[k] = '__IMAGE__';
+    } else if (k === 'temporaryFilePrefix') {
+      obj[k] = '__TEMPORARY_FILE_PREFIX__';
     } else if (typeof v === 'string') {
       const normalized = v.match(/^(https?|file):\/{2}/) ? v : upath.toUnix(v);
       obj[k] = normalized
         .replace(rootPath, '__WORKSPACE__')
+        .replace(/\.vs-\d+\./g, '__TEMPORARY_FILE_PREFIX__')
         .replace(/^(https?|file):\/+/, '$1://');
     }
   });
 };
 
-export const resolveFixture = (p: string) =>
-  upath.resolve(rootPath, 'tests/fixtures', p);
+export const resolveFixture = (p?: string) =>
+  upath.resolve(rootPath, 'tests/fixtures', p || '');
 
 export function assertSingleItem<T = unknown>(
   value: T | T[],

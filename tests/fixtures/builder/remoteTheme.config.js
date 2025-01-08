@@ -1,7 +1,7 @@
-module.exports = {
+export default {
   title: 'title',
-  theme: '@vivliostyle/theme-academic',
+  theme: '@vivliostyle/theme-base',
   entry: 'manuscript/soda.md',
-  output: ['remoteTheme'],
+  output: [],
   workspaceDir: '.vs-remoteTheme',
 };

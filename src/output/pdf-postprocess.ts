@@ -13,6 +13,7 @@ import {
 import * as pressReadyModule from 'press-ready';
 import upath from 'upath';
 import { v1 as uuid } from 'uuid';
+import { PdfOutput, ResolvedTaskConfig } from '../config/resolve.js';
 import { coreVersion } from '../const.js';
 import {
   collectVolumeArgs,
@@ -20,12 +21,11 @@ import {
   toContainerPath,
 } from '../container.js';
 import type { Meta, TOCItem } from '../global-viewer.js';
-import { MergedConfig } from '../input/config.js';
-import { checkContainerEnvironment, suspendLogging } from '../util.js';
-import type { PdfOutput } from './output-types.js';
+import { Logger } from '../logger.js';
+import { isInContainer } from '../util.js';
 
 export type SaveOption = Pick<PdfOutput, 'preflight' | 'preflightOption'> &
-  Pick<MergedConfig, 'image'>;
+  Pick<ResolvedTaskConfig, 'image'>;
 
 const prefixes = {
   dcterms: 'http://purl.org/dc/terms/',
@@ -100,7 +100,6 @@ export class PostProcess {
     output: string,
     { preflight, preflightOption, image }: SaveOption,
   ) {
-    const isInContainer = checkContainerEnvironment();
     const input = preflight
       ? upath.join(os.tmpdir(), `vivliostyle-cli-${uuid()}.pdf`)
       : output;
@@ -110,9 +109,9 @@ export class PostProcess {
 
     if (
       preflight === 'press-ready-local' ||
-      (preflight === 'press-ready' && isInContainer)
+      (preflight === 'press-ready' && isInContainer())
     ) {
-      const restartLogging = suspendLogging('Running press-ready', '🚀');
+      using _ = Logger.suspendLogging('Running press-ready');
       await pressReadyModule.build({
         ...preflightOption.reduce((acc, opt) => {
           const optName = decamelize(opt, { separator: '-' });
@@ -129,16 +128,14 @@ export class PostProcess {
         input,
         output,
       });
-      restartLogging();
     } else if (preflight === 'press-ready') {
-      const restartLogging = suspendLogging('Running press-ready', '🚀');
+      using _ = Logger.suspendLogging('Running press-ready');
       await pressReadyWithContainer({
         input,
         output,
         preflightOption,
         image,
       });
-      restartLogging();
     }
   }
 

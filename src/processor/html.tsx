@@ -1,61 +1,64 @@
 import jsdom, {
   ResourceLoader as BaseResourceLoader,
   JSDOM,
+  VirtualConsole,
 } from '@vivliostyle/jsdom';
-import chalk from 'chalk';
-import * as cheerio from 'cheerio';
 import DOMPurify from 'dompurify';
 import { toHtml } from 'hast-util-to-html';
-import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import prettier from 'prettier';
 import upath from 'upath';
-import type { ManuscriptEntry } from '../input/config.js';
+import MIMEType from 'whatwg-mimetype';
+import { ManuscriptEntry } from '../config/resolve.js';
 import type {
   StructuredDocument,
   StructuredDocumentSection,
-} from '../input/schema.js';
+} from '../config/schema.js';
+import { Logger } from '../logger.js';
 import { decodePublicationManifest } from '../output/webbook.js';
 import type { PublicationManifest } from '../schema/publication.schema.js';
 import {
   DetailError,
   assertPubManifestSchema,
-  debug,
-  isUrlString,
-  logWarn,
+  isValidUri,
+  writeFileIfChanged,
 } from '../util.js';
 
-const virtualConsole = new jsdom.VirtualConsole();
-/* v8 ignore start */
-virtualConsole.on('error', (message) => {
-  debug('[JSDOM Console] error:', message);
-});
-virtualConsole.on('warn', (message) => {
-  debug('[JSDOM Console] warn:', message);
-});
-virtualConsole.on('log', (message) => {
-  debug('[JSDOM Console] log:', message);
-});
-virtualConsole.on('info', (message) => {
-  debug('[JSDOM Console] info:', message);
-});
-virtualConsole.on('dir', (message) => {
-  debug('[JSDOM Console] dir:', message);
-});
-virtualConsole.on('jsdomError', (error) => {
-  // Most of CSS using Paged media will be failed to run CSS parser of JSDOM.
-  // We just ignore it because we don't use CSS parse results.
-  // https://github.com/jsdom/jsdom/blob/a39e0ec4ce9a8806692d986a7ed0cd565ec7498a/lib/jsdom/living/helpers/stylesheets.js#L33-L44
-  // see also: https://github.com/jsdom/jsdom/issues/2005
-  if (error.message === 'Could not parse CSS stylesheet') {
-    return;
-  }
-  throw new DetailError(
-    'Error occurred when loading HTML',
-    error.stack ?? error.message,
-  );
-});
-/* v8 ignore stop */
+export const createVirtualConsole = (onError: (error: DetailError) => void) => {
+  const virtualConsole = new jsdom.VirtualConsole();
+  /* v8 ignore start */
+  virtualConsole.on('error', (message) => {
+    Logger.debug('[JSDOM Console] error:', message);
+  });
+  virtualConsole.on('warn', (message) => {
+    Logger.debug('[JSDOM Console] warn:', message);
+  });
+  virtualConsole.on('log', (message) => {
+    Logger.debug('[JSDOM Console] log:', message);
+  });
+  virtualConsole.on('info', (message) => {
+    Logger.debug('[JSDOM Console] info:', message);
+  });
+  virtualConsole.on('dir', (message) => {
+    Logger.debug('[JSDOM Console] dir:', message);
+  });
+  virtualConsole.on('jsdomError', (error) => {
+    // Most of CSS using Paged media will be failed to run CSS parser of JSDOM.
+    // We just ignore it because we don't use CSS parse results.
+    // https://github.com/jsdom/jsdom/blob/a39e0ec4ce9a8806692d986a7ed0cd565ec7498a/lib/jsdom/living/helpers/stylesheets.js#L33-L44
+    // see also: https://github.com/jsdom/jsdom/issues/2005
+    if (error.message === 'Could not parse CSS stylesheet') {
+      return;
+    }
+    onError(
+      new DetailError(
+        'Error occurred when loading content',
+        error.stack ?? error.message,
+      ),
+    );
+  });
+  /* v8 ignore stop */
+  return virtualConsole;
+};
 
 export const htmlPurify = DOMPurify(new JSDOM('').window);
 
@@ -63,22 +66,84 @@ export class ResourceLoader extends BaseResourceLoader {
   fetcherMap = new Map<string, jsdom.AbortablePromise<Buffer>>();
 
   fetch(url: string, options?: jsdom.FetchOptions) {
-    debug(`[JSDOM] Fetching resource: ${url}`);
+    Logger.debug(`[JSDOM] Fetching resource: ${url}`);
     const fetcher = super.fetch(url, options);
     if (fetcher) {
       this.fetcherMap.set(url, fetcher);
     }
     return fetcher;
   }
+
+  static async saveFetchedResources({
+    fetcherMap,
+    rootUrl,
+    outputDir,
+    onError,
+  }: {
+    fetcherMap: Map<string, jsdom.AbortablePromise<Buffer>>;
+    rootUrl: string;
+    outputDir: string;
+    onError?: (error: Error) => void;
+  }) {
+    const rootHref = /^https?:/i.test(new URL(rootUrl).protocol)
+      ? new URL('/', rootUrl).href
+      : new URL('.', rootUrl).href;
+
+    const normalizeToLocalPath = (urlString: string, mimeType?: string) => {
+      let url = new URL(urlString);
+      url.hash = '';
+      if (mimeType === 'text/html' && !/\.html?$/.test(url.pathname)) {
+        url.pathname = `${url.pathname.replace(/\/$/, '')}/index.html`;
+      }
+      let relTarget = upath.relative(rootHref, url.href);
+      return decodeURI(relTarget);
+    };
+
+    const fetchedResources: { url: string; encodingFormat?: string }[] = [];
+    await Promise.allSettled(
+      [...fetcherMap.entries()].flatMap(async ([url, fetcher]) => {
+        if (!url.startsWith(rootHref)) {
+          return [];
+        }
+        return (
+          fetcher
+            .then(async (buffer) => {
+              let encodingFormat: string | undefined;
+              try {
+                const contentType = fetcher.response?.headers['content-type'];
+                if (contentType) {
+                  encodingFormat = new MIMEType(contentType).essence;
+                }
+                /* v8 ignore next 3 */
+              } catch (e) {
+                /* NOOP */
+              }
+              const relTarget = normalizeToLocalPath(url, encodingFormat);
+              const target = upath.join(outputDir, relTarget);
+              fetchedResources.push({ url: relTarget, encodingFormat });
+              writeFileIfChanged(target, buffer);
+            })
+            /* v8 ignore next */
+            .catch(onError)
+        );
+      }),
+    );
+    return fetchedResources;
+  }
 }
 
-export async function getJsdomFromUrlOrFile(
-  src: string,
-  resourceLoader?: ResourceLoader,
-): Promise<{
-  dom: JSDOM;
-}> {
-  const url = isUrlString(src) ? new URL(src) : pathToFileURL(src);
+export async function getJsdomFromUrlOrFile({
+  src,
+  resourceLoader,
+  virtualConsole = createVirtualConsole((error) => {
+    throw error;
+  }),
+}: {
+  src: string;
+  resourceLoader?: ResourceLoader;
+  virtualConsole?: VirtualConsole;
+}) {
+  const url = isValidUri(src) ? new URL(src) : pathToFileURL(src);
   let dom: JSDOM;
   if (url.protocol === 'http:' || url.protocol === 'https:') {
     dom = await JSDOM.fromURL(src, {
@@ -98,21 +163,28 @@ export async function getJsdomFromUrlOrFile(
   } else {
     throw new Error(`Unsupported protocol: ${url.protocol}`);
   }
-  return { dom };
+  return dom;
 }
 
-export function getJsdomFromString(html: string): { dom: JSDOM } {
-  const dom = new JSDOM(html, {
+export function getJsdomFromString({
+  html,
+  virtualConsole = createVirtualConsole((error) => {
+    throw error;
+  }),
+}: {
+  html: string;
+  virtualConsole?: VirtualConsole;
+}) {
+  return new JSDOM(html, {
     virtualConsole,
   });
-  return { dom };
 }
 
 export async function getStructuredSectionFromHtml(
   htmlPath: string,
   href?: string,
 ) {
-  const { dom } = await getJsdomFromUrlOrFile(htmlPath);
+  const dom = await getJsdomFromUrlOrFile({ src: htmlPath });
   const { document } = dom.window;
   const allHeadings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
     .filter((el) => {
@@ -328,7 +400,7 @@ export async function generateTocListSection({
 }
 
 export async function processTocHtml(
-  html: string,
+  dom: JSDOM,
   {
     manifestPath,
     tocTitle,
@@ -342,8 +414,7 @@ export async function processTocHtml(
     tocTitle: string;
     styleOptions?: Parameters<typeof getTocHtmlStyle>[0];
   },
-): Promise<string> {
-  const { dom } = getJsdomFromString(html);
+): Promise<JSDOM> {
   const { document } = dom.window;
   if (
     !document.querySelector(
@@ -379,8 +450,7 @@ export async function processTocHtml(
       transform,
     });
   }
-
-  return await prettier.format(dom.serialize(), { parser: 'html' });
+  return dom;
 }
 
 const getCoverHtmlStyle = ({
@@ -434,7 +504,7 @@ export function generateDefaultCoverHtml({
 }
 
 export async function processCoverHtml(
-  html: string,
+  dom: JSDOM,
   {
     imageSrc,
     imageAlt,
@@ -444,8 +514,7 @@ export async function processCoverHtml(
     imageAlt: string;
     styleOptions?: Parameters<typeof getCoverHtmlStyle>[0];
   },
-): Promise<string> {
-  const { dom } = getJsdomFromString(html);
+): Promise<JSDOM> {
   const { document } = dom.window;
   const style = document.querySelector('style[data-vv-style]');
   if (style) {
@@ -464,12 +533,11 @@ export async function processCoverHtml(
   if (cover && !cover.hasAttribute('alt')) {
     cover.setAttribute('alt', imageAlt);
   }
-
-  return await prettier.format(dom.serialize(), { parser: 'html' });
+  return dom;
 }
 
-export function processManuscriptHtml(
-  html: string,
+export async function processManuscriptHtml(
+  dom: JSDOM,
   {
     title,
     style,
@@ -481,56 +549,35 @@ export function processManuscriptHtml(
     contentType?: 'text/html' | 'application/xhtml+xml';
     language?: string | null;
   },
-): string {
-  const $ = cheerio.load(html, {
-    xmlMode: contentType === 'application/xhtml+xml',
-  });
+): Promise<JSDOM> {
+  const { document } = dom.window;
   if (title) {
-    if (!$('title').html()) {
-      $('head').append($('<title></title>'));
+    if (!document.querySelector('title')) {
+      const t = document.createElement('title');
+      document.head.appendChild(t);
     }
-    $('title').text(title);
+    document.title = title;
   }
   for (const s of style ?? []) {
-    $('head').append(`<link rel="stylesheet" type="text/css" />`);
-    $('head > *:last-child').attr('href', encodeURI(s));
+    const l = document.createElement('link');
+    l.setAttribute('rel', 'stylesheet');
+    l.setAttribute('type', 'text/css');
+    l.setAttribute('href', encodeURI(s));
+    document.head.appendChild(l);
   }
   if (language) {
     if (contentType === 'application/xhtml+xml') {
-      if (!$('html').attr('xml:lang')) {
-        $('html').attr('lang', language);
-        $('html').attr('xml:lang', language);
+      if (!document.documentElement.getAttribute('xml:lang')) {
+        document.documentElement.setAttribute('lang', language);
+        document.documentElement.setAttribute('xml:lang', language);
       }
     } else {
-      if (!$('html').attr('lang')) {
-        $('html').attr('lang', language);
+      if (!document.documentElement.getAttribute('lang')) {
+        document.documentElement.setAttribute('lang', language);
       }
     }
   }
-  let processed = $.html();
-  return processed;
-}
-
-export function isTocHtml(filepath: string): boolean {
-  try {
-    const $ = cheerio.load(fs.readFileSync(filepath, 'utf8'));
-    return (
-      $('[role="doc-toc"], [role="directory"], nav, .toc, #toc').length > 0
-    );
-  } catch (err) {
-    // seems not to be a html file
-    return false;
-  }
-}
-
-export function isCovertHtml(filepath: string): boolean {
-  try {
-    const $ = cheerio.load(fs.readFileSync(filepath, 'utf8'));
-    return $('[role="doc-cover"]').length > 0;
-  } catch (err) {
-    // seems not to be a html file
-    return false;
-  }
+  return dom;
 }
 
 export async function fetchLinkedPublicationManifest({
@@ -556,18 +603,18 @@ export async function fetchLinkedPublicationManifest({
     if (scriptEl?.getAttribute('type') !== 'application/ld+json') {
       return null;
     }
-    debug(`Found embedded publication manifest: ${href}`);
+    Logger.debug(`Found embedded publication manifest: ${href}`);
     try {
       manifest = JSON.parse(scriptEl.innerHTML);
     } catch (error) {
       const thrownError = error as Error;
       throw new DetailError(
         'Failed to parse manifest data',
-        typeof thrownError.stack ?? thrownError.message,
+        typeof thrownError.stack,
       );
     }
   } else {
-    debug(`Found linked publication manifest: ${href}`);
+    Logger.debug(`Found linked publication manifest: ${href}`);
     const url = new URL(href, baseUrl);
     manifestUrl = url.href;
     const buffer = await resourceLoader.fetch(url.href);
@@ -581,7 +628,7 @@ export async function fetchLinkedPublicationManifest({
       const thrownError = error as Error;
       throw new DetailError(
         'Failed to parse manifest data',
-        typeof thrownError.stack ?? thrownError.message,
+        typeof thrownError.stack,
       );
     }
   }
@@ -589,10 +636,8 @@ export async function fetchLinkedPublicationManifest({
   try {
     assertPubManifestSchema(manifest);
   } catch (error) {
-    logWarn(
-      `${chalk.yellowBright(
-        'Publication manifest validation failed. Processing continues, but some problems may occur.',
-      )}\n${error}`,
+    Logger.logWarn(
+      `Publication manifest validation failed. Processing continues, but some problems may occur.\n${error}`,
     );
   }
   return {

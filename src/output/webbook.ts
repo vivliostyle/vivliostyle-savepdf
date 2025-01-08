@@ -1,19 +1,23 @@
-import chalk from 'chalk';
 import { copy, remove } from 'fs-extra/esm';
 import { lookup as mime } from 'mime-types';
 import fs from 'node:fs';
 import { glob } from 'tinyglobby';
 import upath from 'upath';
-import MIMEType from 'whatwg-mimetype';
+import {
+  EpubOutput,
+  ResolvedTaskConfig,
+  WebPublicationOutput,
+} from '../config/resolve.js';
+import { ArticleEntryConfig } from '../config/schema.js';
 import { MANIFEST_FILENAME } from '../const.js';
-import { MergedConfig, WebbookEntryConfig } from '../input/config.js';
-import { ArticleEntryObject } from '../input/schema.js';
+import { Logger } from '../logger.js';
 import {
   getDefaultIgnorePatterns,
   getIgnoreAssetPatterns,
   globAssetFiles,
 } from '../processor/compile.js';
 import {
+  createVirtualConsole,
   fetchLinkedPublicationManifest,
   getJsdomFromUrlOrFile,
   ResourceLoader,
@@ -26,16 +30,11 @@ import type {
 } from '../schema/publication.schema.js';
 import {
   assertPubManifestSchema,
-  debug,
   DetailError,
-  log,
-  logError,
-  logUpdate,
   pathEquals,
   useTmpDirectory,
 } from '../util.js';
 import { exportEpub } from './epub.js';
-import { EpubOutput, WebPublicationOutput } from './output-types.js';
 
 function sortManifestResources(manifest: PublicationManifest) {
   if (!Array.isArray(manifest.resources)) {
@@ -54,7 +53,7 @@ export async function prepareWebPublicationDirectory({
   outputDir: string;
 }): Promise<void> {
   if (fs.existsSync(outputDir)) {
-    debug('going to remove existing webpub', outputDir);
+    Logger.debug('going to remove existing webpub', outputDir);
     await remove(outputDir);
   }
   fs.mkdirSync(outputDir, { recursive: true });
@@ -113,7 +112,7 @@ export function writePublicationManifest(
     language?: string;
     readingProgression?: 'ltr' | 'rtl';
     modified: string;
-    entries: ArticleEntryObject[];
+    entries: ArticleEntryConfig[];
     cover?: {
       url: string;
       name: string;
@@ -148,12 +147,8 @@ export function writePublicationManifest(
         encodingFormat: mimeType,
       });
     } else {
-      log(
-        `\n${chalk.yellow('Cover image ')}${chalk.bold.yellow(
-          `"${options.cover}"`,
-        )}${chalk.yellow(
-          ' was set in your configuration but couldn’t detect the image metadata. Please check a valid cover file is placed.',
-        )}`,
+      Logger.logWarn(
+        `Cover image "${options.cover}" was set in your configuration but couldn’t detect the image metadata. Please check a valid cover file is placed.`,
       );
     }
   }
@@ -175,10 +170,10 @@ export function writePublicationManifest(
   };
 
   const encodedManifest = encodePublicationManifest(publication);
-  debug(
-    'writePublicationManifest',
+  Logger.debug(
+    'writePublicationManifest path: %s content: %O',
     output,
-    JSON.stringify(encodedManifest, null, 2),
+    encodedManifest,
   );
   try {
     assertPubManifestSchema(encodedManifest);
@@ -191,6 +186,7 @@ export function writePublicationManifest(
         : (thrownError.stack ?? thrownError.message),
     );
   }
+  fs.mkdirSync(upath.dirname(output), { recursive: true });
   fs.writeFileSync(output, JSON.stringify(encodedManifest, null, 2));
   return publication;
 }
@@ -198,17 +194,21 @@ export function writePublicationManifest(
 export async function retrieveWebbookEntry({
   webbookEntryUrl,
   outputDir,
-}: WebbookEntryConfig & {
+}: {
+  webbookEntryUrl: string;
   outputDir: string;
 }): Promise<{
   entryHtmlFile: string;
   manifest: PublicationManifest | undefined;
 }> {
   if (/^https?:/i.test(webbookEntryUrl)) {
-    logUpdate('Fetching remote contents');
+    Logger.logUpdate('Fetching remote contents');
   }
   const resourceLoader = new ResourceLoader();
-  const { dom } = await getJsdomFromUrlOrFile(webbookEntryUrl, resourceLoader);
+  const dom = await getJsdomFromUrlOrFile({
+    src: webbookEntryUrl,
+    resourceLoader,
+  });
   const { manifest, manifestUrl } =
     (await fetchLinkedPublicationManifest({
       dom,
@@ -247,55 +247,29 @@ export async function retrieveWebbookEntry({
         continue;
       }
       const subpathResourceLoader = new ResourceLoader();
-      await getJsdomFromUrlOrFile(fullUrl, subpathResourceLoader);
+      await getJsdomFromUrlOrFile({
+        src: fullUrl,
+        resourceLoader: subpathResourceLoader,
+        virtualConsole: createVirtualConsole((error) => {
+          Logger.logError(`Failed to fetch webbook resources: ${error.detail}`);
+        }),
+      });
       subpathResourceLoader.fetcherMap.forEach(
         (v, k) => !retriever.has(k) && retriever.set(k, v),
       );
     }
   }
 
-  const normalizeToLocalPath = (urlString: string, mimeType?: string) => {
-    const url = new URL(urlString);
-    url.hash = '';
-    let relTarget = upath.relative(rootUrl, url.href);
-    if (!relTarget || (mimeType === 'text/html' && !upath.extname(relTarget))) {
-      relTarget = upath.join(relTarget, 'index.html');
-    }
-    return decodeURI(relTarget);
-  };
-  const fetchedResources: { url: string; encodingFormat?: string }[] = [];
-  await Promise.allSettled(
-    Array.from(retriever.entries()).flatMap(([url, fetcher]) => {
-      if (!pathContains(url)) {
-        return [];
-      }
-      return (
-        fetcher
-          .then(async (buffer) => {
-            let encodingFormat: string | undefined;
-            try {
-              const contentType = fetcher.response?.headers['content-type'];
-              if (contentType) {
-                encodingFormat = new MIMEType(contentType).essence;
-              }
-              /* v8 ignore next 3 */
-            } catch (e) {
-              /* NOOP */
-            }
-            const relTarget = normalizeToLocalPath(url, encodingFormat);
-            const target = upath.join(outputDir, relTarget);
-            fetchedResources.push({ url: relTarget, encodingFormat });
-            await fs.promises.mkdir(upath.dirname(target), { recursive: true });
-            await fs.promises.writeFile(target, buffer);
-          })
-          /* v8 ignore next 4 */
-          .catch((error) => {
-            debug(error);
-            logError(`Failed to fetch webbook resources: ${url}`);
-          })
-      );
-    }),
-  );
+  const fetchedResources = await ResourceLoader.saveFetchedResources({
+    fetcherMap: retriever,
+    rootUrl: webbookEntryUrl,
+    outputDir,
+    /* v8 ignore next 4 */
+    onError: (error) => {
+      Logger.debug(error);
+      Logger.logError(`Failed to fetch webbook resources: ${error}`);
+    },
+  });
 
   if (manifest) {
     const referencedContents = [
@@ -311,11 +285,11 @@ export async function retrieveWebbookEntry({
     sortManifestResources(manifest);
   }
 
-  debug(
+  Logger.debug(
     'Saved webbook resources',
     fetchedResources.map((v) => v.url),
   );
-  debug(
+  Logger.debug(
     'Publication manifest from webbook',
     manifest && JSON.stringify(manifest, null, 2),
   );
@@ -323,7 +297,9 @@ export async function retrieveWebbookEntry({
   return {
     entryHtmlFile: upath.join(
       outputDir,
-      normalizeToLocalPath(webbookEntryUrl, 'text/html'),
+      upath.extname(webbookEntryUrl)
+        ? upath.basename(webbookEntryUrl)
+        : 'index.html',
     ),
     manifest,
   };
@@ -334,14 +310,14 @@ export async function supplyWebPublicationManifestForWebbook({
   outputDir,
   ...config
 }: Pick<
-  MergedConfig,
+  ResolvedTaskConfig,
   'language' | 'title' | 'author' | 'readingProgression'
 > & {
   entryHtmlFile: string;
   outputDir: string;
 }): Promise<PublicationManifest> {
-  debug(`Generating publication manifest from HTML: ${entryHtmlFile}`);
-  const { dom } = await getJsdomFromUrlOrFile(entryHtmlFile);
+  Logger.debug(`Generating publication manifest from HTML: ${entryHtmlFile}`);
+  const dom = await getJsdomFromUrlOrFile({ src: entryHtmlFile });
   const { document } = dom.window;
   const language =
     config.language || document.documentElement.lang || undefined;
@@ -382,7 +358,7 @@ export async function supplyWebPublicationManifestForWebbook({
   document.head.appendChild(link);
   await fs.promises.writeFile(entryHtmlFile, dom.serialize(), 'utf8');
 
-  debug(
+  Logger.debug(
     'Generated publication manifest from HTML',
     JSON.stringify(manifest, null, 2),
   );
@@ -399,7 +375,7 @@ export async function copyWebPublicationAssets({
   outputDir,
   entries,
 }: Pick<
-  MergedConfig,
+  ResolvedTaskConfig,
   'exportAliases' | 'outputs' | 'copyAsset' | 'themesDir' | 'entries'
 > & {
   input: string;
@@ -451,7 +427,7 @@ export async function copyWebPublicationAssets({
     allFiles.delete(alias.target);
   }
 
-  debug(
+  Logger.debug(
     'webbook files',
     JSON.stringify(
       [...allFiles].map((file) => {
@@ -479,7 +455,7 @@ export async function copyWebPublicationAssets({
     }
   }
 
-  debug('webbook publication.json', actualManifestPath);
+  Logger.debug('webbook publication.json', actualManifestPath);
   // Overwrite copied publication.json
   const manifest = decodePublicationManifest(
     JSON.parse(fs.readFileSync(actualManifestPath, 'utf8')),
@@ -540,14 +516,13 @@ export async function copyWebPublicationAssets({
   return { manifest, actualManifestPath };
 }
 
-export type BuildWebPublicationOptions = Omit<MergedConfig, 'target'> & {
-  target: WebPublicationOutput | EpubOutput;
-};
-
 export async function buildWebPublication({
   target,
-  ...config
-}: BuildWebPublicationOptions): Promise<string> {
+  config,
+}: {
+  target: WebPublicationOutput | EpubOutput;
+  config: ResolvedTaskConfig;
+}): Promise<string> {
   let outputDir: string;
   if (target.format === 'webpub') {
     outputDir = target.path;
@@ -559,12 +534,12 @@ export async function buildWebPublication({
   let entryHtmlFile: string | undefined;
   let manifest: PublicationManifest;
   let actualManifestPath: string | undefined;
-  if (config.manifestPath) {
+  if (config.viewerInput.type === 'webpub') {
     const ret = await copyWebPublicationAssets({
       ...config,
       input: config.workspaceDir,
       outputDir,
-      manifestPath: config.manifestPath,
+      manifestPath: config.viewerInput.manifestPath,
     });
     manifest = ret.manifest;
     actualManifestPath = ret.actualManifestPath;
@@ -577,9 +552,9 @@ export async function buildWebPublication({
         );
       }
     }
-  } else if (config.webbookEntryUrl) {
+  } else if (config.viewerInput.type === 'webbook') {
     const ret = await retrieveWebbookEntry({
-      webbookEntryUrl: config.webbookEntryUrl,
+      webbookEntryUrl: config.viewerInput.webbookEntryUrl,
       outputDir,
     });
     entryHtmlFile = ret.entryHtmlFile;
