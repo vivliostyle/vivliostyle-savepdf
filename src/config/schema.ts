@@ -671,9 +671,9 @@ export const BuildTask = v.pipe(
           v.transform((input) =>
             typeof input === 'string'
               ? { htmlPath: input }
-              : typeof input === 'boolean'
+              : input === true
                 ? {}
-                : input,
+                : input || undefined,
           ),
           v.description($`
             Options for Table of Contents (ToC) documents.

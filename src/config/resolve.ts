@@ -34,6 +34,7 @@ import {
   getEpubRootDir,
   isInContainer,
   isValidUri,
+  pathContains,
   pathEquals,
   readJSON,
   statFileSync,
@@ -599,6 +600,27 @@ export function resolveTaskConfig(
           cover,
         });
 
+  // Check overwrites
+  for (const output of outputs) {
+    const relPath = upath.relative(context, output.path);
+    if (
+      pathContains(output.path, entryContextDir) ||
+      pathEquals(output.path, entryContextDir)
+    ) {
+      throw new Error(
+        `The output path is set to "${relPath}", but this will overwrite the original manuscript file. Please specify a different path.`,
+      );
+    }
+    if (
+      pathContains(output.path, projectConfig.workspaceDir) ||
+      pathEquals(output.path, projectConfig.workspaceDir)
+    ) {
+      throw new Error(
+        `The output path is set to "${relPath}", but this will overwrite the working directory of Vivliostyle. Please specify a different path.`,
+      );
+    }
+  }
+
   const resolvedConfig = {
     ...projectConfig,
     context,
@@ -876,6 +898,7 @@ function resolveComposedProjectConfig({
         themesDir,
       }),
     ) ?? [];
+  rootThemes.forEach((t) => themeIndexes.add(t));
   const tocConfig = {
     tocTitle: config.toc?.title ?? config?.tocTitle ?? TOC_TITLE,
     target: upath.resolve(workspaceDir, config.toc?.htmlPath ?? TOC_FILENAME),

@@ -1,9 +1,8 @@
-const baseConfig = require('./workspace.config.cjs');
+import baseConfig from './workspace.config.js';
 
-module.exports = [
+export default [
   {
     ...baseConfig,
-    output: ['output1.pdf'],
     workspaceDir: '.vs-multipleEntry/one',
     toc: false,
     cover: undefined,
@@ -18,10 +17,6 @@ module.exports = [
         rel: 'contents',
       },
     ],
-    output: {
-      path: 'output2',
-      format: 'webpub',
-    },
     workspaceDir: '.vs-multipleEntry/two',
     cover: undefined,
   },

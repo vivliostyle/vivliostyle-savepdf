@@ -1,6 +1,6 @@
-const baseConfig = require('./workspace.config.cjs');
+import baseConfig from './workspace.config.js';
 
-module.exports = {
+export default {
   ...baseConfig,
   entry: [
     ...baseConfig.entry,

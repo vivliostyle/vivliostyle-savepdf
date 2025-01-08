@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   title: 'title',
   author: 'author',
   language: 'ja',
@@ -8,7 +8,7 @@ module.exports = {
       theme: 'manuscript/sample-theme.css',
     },
   ],
-  output: ['output1.pdf'],
+  output: [],
   workspaceDir: '.vs-workspace',
   toc: true,
   cover: './manuscript/cover.png',

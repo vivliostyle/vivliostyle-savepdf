@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   title: 'title',
   author: 'author',
   theme: 'https://example.com',
@@ -12,11 +12,6 @@ module.exports = {
     },
     'manuscript/sample-xhtml.xhtml',
   ],
-  output: [
-    {
-      path: 'variousManuscriptFormat',
-      format: 'webpub',
-    },
-  ],
+  output: [],
   workspaceDir: '.vs-variousManuscriptFormat',
 };

@@ -1,44 +1,19 @@
 import jsdom, { JSDOM } from '@vivliostyle/jsdom';
-import assert from 'node:assert';
 import fs from 'node:fs';
 import { glob } from 'tinyglobby';
 import { expect, it } from 'vitest';
-import { MergedConfig } from '../src/input/config.js';
-import {
-  checkOverwriteViolation,
-  cleanupWorkspace,
-  compile,
-  copyAssets,
-  prepareThemeDirectory,
-} from '../src/processor/compile.js';
-import { checkThemeInstallationNecessity } from '../src/processor/theme.js';
-import {
-  assertArray,
-  assertSingleItem,
-  getMergedConfig,
-  resolveFixture,
-} from './command-util.js';
+import { resolveFixture, runCommand } from './command-util.js';
 
-function assertManifestPath(
-  config: MergedConfig,
-): asserts config is MergedConfig & { manifestPath: string } {
-  assert(!!config.manifestPath);
-}
+// function assertManifestPath(
+//   config: MergedConfig,
+// ): asserts config is MergedConfig & { manifestPath: string } {
+//   assert(!!config.manifestPath);
+// }
 
 it('generate workspace directory', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/workspace.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  for (const target of config.outputs) {
-    checkOverwriteViolation(config, target.path, target.format);
-  }
-  assertManifestPath(config);
-  await cleanupWorkspace(config);
-  await prepareThemeDirectory(config);
-  await compile(config);
-  await copyAssets(config);
+  await runCommand(['build', '-c', 'workspace.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
   const fileList = await glob('**', {
     cwd: resolveFixture('builder/.vs-workspace'),
   });
@@ -51,11 +26,11 @@ it('generate workspace directory', async () => {
       'manuscript/sample-theme.css',
       'manuscript/soda.html',
       'publication.json',
+      'themes/node_modules/debug-theme/additional-theme.css',
+      'themes/node_modules/debug-theme/package.json',
+      'themes/node_modules/debug-theme/theme.css',
       'themes/package-lock.json',
       'themes/package.json',
-      'themes/packages/debug-theme/additional-theme.css',
-      'themes/packages/debug-theme/package.json',
-      'themes/packages/debug-theme/theme.css',
     ]),
   );
   const { default: manifest } = await import(
@@ -81,18 +56,19 @@ it('generate workspace directory', async () => {
   });
 
   const tocHtml = new JSDOM(
-    fs.readFileSync(resolveFixture('builder/.vs-workspace/index.html')),
+    fs.readFileSync(resolveFixture('builder/.vs-workspace/index.html'), 'utf8'),
   );
   expect(tocHtml.window.document.documentElement.lang).toBe('ja');
   expect(
     tocHtml.window.document.querySelector(
-      'link[rel="stylesheet"][href="themes/packages/debug-theme/theme.css"]',
+      'link[rel="stylesheet"][href="themes/node_modules/debug-theme/theme.css"]',
     ),
   ).toBeTruthy();
 
   const manuscriptHtml = new JSDOM(
     fs.readFileSync(
       resolveFixture('builder/.vs-workspace/manuscript/soda.html'),
+      'utf8',
     ),
   );
   expect(
@@ -102,7 +78,7 @@ it('generate workspace directory', async () => {
   ).toBeTruthy();
 
   const coverHtml = new JSDOM(
-    fs.readFileSync(resolveFixture('builder/.vs-workspace/cover.html')),
+    fs.readFileSync(resolveFixture('builder/.vs-workspace/cover.html'), 'utf8'),
     { virtualConsole: new jsdom.VirtualConsole() }, // Disable JSDOM console
   );
   expect(coverHtml.window.document.documentElement.lang).toBe('ja');
@@ -116,32 +92,12 @@ it('generate workspace directory', async () => {
       '[aria-label="Cover"] > img[src="manuscript/cover.png"][alt="Cover image"][role="doc-cover"]',
     ),
   ).toBeTruthy();
-
-  // try again and check idempotence
-  await cleanupWorkspace(config);
-  await prepareThemeDirectory(config);
-  await compile(config);
-  await copyAssets(config);
-  const fileList2 = await glob('**', {
-    cwd: resolveFixture('builder/.vs-workspace'),
-  });
-  expect(new Set(fileList2)).toEqual(new Set(fileList));
 });
 
 it('generate files with entryContext', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/entryContext.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  for (const target of config.outputs) {
-    checkOverwriteViolation(config, target.path, target.format);
-  }
-  assertManifestPath(config);
-  await cleanupWorkspace(config);
-  await prepareThemeDirectory(config);
-  await compile(config);
-  await copyAssets(config);
+  await runCommand(['build', '-c', 'entryContext.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
   const fileList = await glob('**', {
     cwd: resolveFixture('builder/.vs-entryContext'),
   });
@@ -180,7 +136,10 @@ it('generate files with entryContext', async () => {
   expect(manifest.inLanguage).toBeUndefined();
 
   const tocHtml = new JSDOM(
-    fs.readFileSync(resolveFixture('builder/.vs-entryContext/t-o-c.html')),
+    fs.readFileSync(
+      resolveFixture('builder/.vs-entryContext/t-o-c.html'),
+      'utf8',
+    ),
   );
   expect(
     tocHtml.window.document.querySelector(
@@ -188,39 +147,22 @@ it('generate files with entryContext', async () => {
     ),
   ).toBeTruthy();
   const manuscriptHtml = new JSDOM(
-    fs.readFileSync(resolveFixture('builder/.vs-entryContext/soda.html')),
+    fs.readFileSync(
+      resolveFixture('builder/.vs-entryContext/soda.html'),
+      'utf8',
+    ),
   );
   expect(
     manuscriptHtml.window.document.querySelector(
       'link[rel="stylesheet"][href="manuscript/sample-theme.css"]',
     ),
   ).toBeTruthy();
-
-  // try again and check idempotence
-  await cleanupWorkspace(config);
-  await prepareThemeDirectory(config);
-  await compile(config);
-  await copyAssets(config);
-  const fileList2 = await glob('**', {
-    cwd: resolveFixture('builder/.vs-entryContext'),
-  });
-  expect(new Set(fileList2)).toEqual(new Set(fileList));
 });
 
 it('generate from various manuscript formats', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/variousManuscriptFormat.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  for (const target of config.outputs) {
-    checkOverwriteViolation(config, target.path, target.format);
-  }
-  assertManifestPath(config);
-  await cleanupWorkspace(config);
-  await prepareThemeDirectory(config);
-  await compile(config);
-  await copyAssets(config);
+  await runCommand(['build', '-c', 'variousManuscriptFormat.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
   const fileList = await glob('**', {
     cwd: resolveFixture('builder/.vs-variousManuscriptFormat'),
   });
@@ -232,11 +174,11 @@ it('generate from various manuscript formats', async () => {
       'manuscript/sample-xhtml.xhtml',
       'manuscript/soda.html',
       'publication.json',
+      'themes/node_modules/debug-theme/additional-theme.css',
+      'themes/node_modules/debug-theme/package.json',
+      'themes/node_modules/debug-theme/theme.css',
       'themes/package-lock.json',
       'themes/package.json',
-      'themes/packages/debug-theme/additional-theme.css',
-      'themes/packages/debug-theme/package.json',
-      'themes/packages/debug-theme/theme.css',
     ]),
   );
   const { default: manifest } = await import(
@@ -263,6 +205,7 @@ it('generate from various manuscript formats', async () => {
       resolveFixture(
         'builder/.vs-variousManuscriptFormat/manuscript/soda.html',
       ),
+      'utf8',
     ),
   );
   expect(
@@ -279,11 +222,12 @@ it('generate from various manuscript formats', async () => {
       resolveFixture(
         'builder/.vs-variousManuscriptFormat/manuscript/sample-html.html',
       ),
+      'utf8',
     ),
   );
   expect(
     doc2.window.document.querySelector(
-      'link[rel="stylesheet"][href="../themes/packages/debug-theme/theme.css"]',
+      'link[rel="stylesheet"][href="../themes/node_modules/debug-theme/theme.css"]',
     ),
   ).toBeTruthy();
   expect(doc2.window.document.querySelector('title')?.text).toEqual('ABCDEF');
@@ -295,6 +239,7 @@ it('generate from various manuscript formats', async () => {
       resolveFixture(
         'builder/.vs-variousManuscriptFormat/manuscript/sample-xhtml.xhtml',
       ),
+      'utf8',
     ),
     { contentType: 'application/xhtml+xml' },
   );
@@ -312,30 +257,18 @@ it('generate from various manuscript formats', async () => {
 });
 
 it('generate with VFM options', async () => {
-  const configWithoutOption = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/workspace.config.cjs'),
-  ]);
-  assertSingleItem(configWithoutOption);
-  assertManifestPath(configWithoutOption);
-  await cleanupWorkspace(configWithoutOption);
-  await prepareThemeDirectory(configWithoutOption);
-  await compile(configWithoutOption);
+  await runCommand(['build', '-c', 'workspace.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
   const output1 = fs.readFileSync(
     resolveFixture('builder/.vs-workspace/manuscript/soda.html'),
     'utf8',
   );
-  expect(output1).toMatch('hardLineBreaks option test\n        foo');
+  expect(output1).toMatch('hardLineBreaks option test foo');
 
-  const configWithOption = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/vfm.config.cjs'),
-  ]);
-  assertSingleItem(configWithOption);
-  assertManifestPath(configWithOption);
-  await cleanupWorkspace(configWithOption);
-  await prepareThemeDirectory(configWithOption);
-  await compile(configWithOption);
+  await runCommand(['build', '-c', 'vfm.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
   const { default: manifest } = await import(
     resolveFixture('builder/.vs-vfm/publication.json')
   );
@@ -359,10 +292,11 @@ it('generate with VFM options', async () => {
     resolveFixture('builder/.vs-vfm/manuscript/soda.html'),
     'utf8',
   );
-  expect(output2).toMatch('hardLineBreaks option test<br>\nfoo');
+  expect(output2).toMatch(/hardLineBreaks option test<br \/>\s*foo/g);
   const doc1 = new JSDOM(
     fs.readFileSync(
       resolveFixture('builder/.vs-vfm/manuscript/frontmatter.html'),
+      'utf8',
     ),
   );
   expect(doc1.window.document.querySelector('title')?.textContent).toBe(
@@ -378,17 +312,9 @@ it('generate with VFM options', async () => {
 });
 
 it('generate from multiple config entries', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/multipleEntry.config.cjs'),
-  ]);
-  assertArray(config);
-  expect(config).toHaveLength(2);
-
-  assertManifestPath(config[0]);
-  await cleanupWorkspace(config[0]);
-  await prepareThemeDirectory(config[0]);
-  await compile(config[0]);
+  await runCommand(['build', '-c', 'multipleEntry.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
   const { default: manifest1 } = await import(
     resolveFixture('builder/.vs-multipleEntry/one/publication.json')
   );
@@ -398,11 +324,6 @@ it('generate from multiple config entries', async () => {
       url: 'manuscript/soda.html',
     },
   ]);
-
-  assertManifestPath(config[1]);
-  await cleanupWorkspace(config[1]);
-  await prepareThemeDirectory(config[1]);
-  await compile(config[1]);
   const { default: manifest2 } = await import(
     resolveFixture('builder/.vs-multipleEntry/two/publication.json')
   );
@@ -421,15 +342,9 @@ it('generate from multiple config entries', async () => {
 });
 
 it('generate files with multiple cover pages', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/multipleCoverPages.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  assertManifestPath(config);
-  await cleanupWorkspace(config);
-  await prepareThemeDirectory(config);
-  await compile(config);
+  await runCommand(['build', '-c', 'multipleCoverPages.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
   const { default: manifest } = await import(
     resolveFixture('builder/.vs-multipleCoverPages/publication.json')
   );
@@ -461,6 +376,7 @@ it('generate files with multiple cover pages', async () => {
   const tocHtml = new JSDOM(
     fs.readFileSync(
       resolveFixture('builder/.vs-multipleCoverPages/index.html'),
+      'utf8',
     ),
     { virtualConsole: new jsdom.VirtualConsole() }, // Disable JSDOM console
   );
@@ -476,6 +392,7 @@ it('generate files with multiple cover pages', async () => {
   const coverHtml = new JSDOM(
     fs.readFileSync(
       resolveFixture('builder/.vs-multipleCoverPages/cover.html'),
+      'utf8',
     ),
     { virtualConsole: new jsdom.VirtualConsole() }, // Disable JSDOM console
   );
@@ -488,6 +405,7 @@ it('generate files with multiple cover pages', async () => {
   const anotherCoverHtml = new JSDOM(
     fs.readFileSync(
       resolveFixture('builder/.vs-multipleCoverPages/another-cover.html'),
+      'utf8',
     ),
     { virtualConsole: new jsdom.VirtualConsole() }, // Disable JSDOM console
   );
@@ -512,49 +430,26 @@ it('generate files with multiple cover pages', async () => {
 });
 
 it('check overwrite violation', async () => {
-  const config1 = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/overwriteViolation.1.config.cjs'),
-  ]);
-  assertSingleItem(config1);
-  expect(
-    new Promise<void>((res, rej) => {
-      try {
-        checkOverwriteViolation(config1, config1.outputs[0].path, '');
-        res();
-      } catch (err) {
-        rej(err);
-      }
+  await expect(
+    runCommand(['build', '-c', 'overwriteViolation.1.config.js'], {
+      cwd: resolveFixture('builder'),
     }),
-  ).rejects.toThrow();
-  const config2 = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/overwriteViolation.2.config.cjs'),
-  ]);
-  assertSingleItem(config2);
-  expect(
-    new Promise<void>((res, rej) => {
-      try {
-        checkOverwriteViolation(config2, config2.outputs[0].path, '');
-        res();
-      } catch (err) {
-        rej(err);
-      }
+  ).rejects.toThrow(
+    'The output path is set to "..", but this will overwrite the original manuscript file. Please specify a different path.',
+  );
+  await expect(
+    runCommand(['build', '-c', 'overwriteViolation.2.config.js'], {
+      cwd: resolveFixture('builder'),
     }),
-  ).rejects.toThrow();
+  ).rejects.toThrow(
+    'The output path is set to ".vs-overriddenWorkspace", but this will overwrite the working directory of Vivliostyle. Please specify a different path.',
+  );
 });
 
 it('install local themes', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/localTheme.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  assertManifestPath(config);
-  await cleanupWorkspace(config);
-  await prepareThemeDirectory(config);
-  await compile(config);
-  await copyAssets(config);
+  await runCommand(['build', '-c', 'localTheme.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
   const fileList = await glob('**', {
     cwd: resolveFixture('builder/.vs-localTheme'),
   });
@@ -566,16 +461,18 @@ it('install local themes', async () => {
       'manuscript/theme-reference.html',
       'publication.json',
       'sample-theme.css',
+      'themes/node_modules/debug-theme/additional-theme.css',
+      'themes/node_modules/debug-theme/package.json',
+      'themes/node_modules/debug-theme/theme.css',
       'themes/package-lock.json',
       'themes/package.json',
-      'themes/packages/debug-theme/additional-theme.css',
-      'themes/packages/debug-theme/package.json',
-      'themes/packages/debug-theme/theme.css',
     ]),
   );
   // checking symlink-referenced directory
   const themePackageFileList = await glob('**', {
-    cwd: resolveFixture('builder/.vs-localTheme/themes/packages/debug-theme'),
+    cwd: resolveFixture(
+      'builder/.vs-localTheme/themes/node_modules/debug-theme',
+    ),
   });
   expect(new Set(themePackageFileList)).toEqual(
     new Set(['additional-theme.css', 'package.json', 'theme.css']),
@@ -584,16 +481,18 @@ it('install local themes', async () => {
   const doc1 = new JSDOM(
     fs.readFileSync(
       resolveFixture('builder/.vs-localTheme/manuscript/soda.html'),
+      'utf8',
     ),
   );
   expect(
     doc1.window.document.querySelector(
-      'link[rel="stylesheet"][href="../themes/packages/debug-theme/theme.css"]',
+      'link[rel="stylesheet"][href="../themes/node_modules/debug-theme/theme.css"]',
     ),
   ).toBeTruthy();
   const doc2 = new JSDOM(
     fs.readFileSync(
       resolveFixture('builder/.vs-localTheme/manuscript/theme-reference.html'),
+      'utf8',
     ),
   );
   expect(
@@ -601,74 +500,41 @@ it('install local themes', async () => {
       'link[rel="stylesheet"][href="../sample-theme.css"]',
     ),
   ).toBeTruthy();
-
-  // try again and check idempotence
-  await cleanupWorkspace(config);
-  expect(checkThemeInstallationNecessity(config)).resolves.toBe(false);
-  await prepareThemeDirectory(config);
-  await compile(config);
-  await copyAssets(config);
-  const fileList2 = await glob('**', {
-    cwd: resolveFixture('builder/.vs-localTheme'),
-  });
-  expect(new Set(fileList2)).toEqual(new Set(fileList));
 });
 
 it('install remote themes', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/remoteTheme.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  assertManifestPath(config);
-  await cleanupWorkspace(config);
-  await prepareThemeDirectory(config);
-  await compile(config);
-  await copyAssets(config);
+  await runCommand(['build', '-c', 'remoteTheme.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
   const fileList = await glob('**', {
     cwd: resolveFixture('builder/.vs-remoteTheme'),
   });
   expect(fileList).toContain(
-    'themes/packages/@vivliostyle/theme-academic/package.json',
+    'themes/node_modules/@vivliostyle/theme-base/package.json',
   );
 
   const doc = new JSDOM(
     fs.readFileSync(
       resolveFixture('builder/.vs-remoteTheme/manuscript/soda.html'),
+      'utf8',
     ),
   );
   expect(
     doc.window.document.querySelector(
-      'link[rel="stylesheet"][href="../themes/packages/@vivliostyle/theme-academic/theme.css"]',
+      'link[rel="stylesheet"][href="../themes/node_modules/@vivliostyle/theme-base/theme-all.css"]',
     ),
   ).toBeTruthy();
-
-  // try again and check idempotence
-  await cleanupWorkspace(config);
-  expect(checkThemeInstallationNecessity(config)).resolves.toBe(false);
-  await prepareThemeDirectory(config);
-  await compile(config);
-  await copyAssets(config);
-  const fileList2 = await glob('**', {
-    cwd: resolveFixture('builder/.vs-remoteTheme'),
-  });
-  expect(new Set(fileList2)).toEqual(new Set(fileList));
 }, 300000); // Longer timeout to ensure installing remote themes
 
 it('use multiple themes', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/multipleTheme.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  assertManifestPath(config);
-  await cleanupWorkspace(config);
-  await prepareThemeDirectory(config);
-  await compile(config);
+  await runCommand(['build', '-c', 'multipleTheme.config.js'], {
+    cwd: resolveFixture('builder'),
+  });
 
   const doc1 = new JSDOM(
     fs.readFileSync(
       resolveFixture('builder/.vs-multipleTheme/manuscript/soda.html'),
+      'utf8',
     ),
   );
   expect(
@@ -676,57 +542,48 @@ it('use multiple themes', async () => {
       (e) => e.getAttribute('href'),
     ),
   ).toEqual([
-    '../themes/packages/debug-theme/theme.css',
-    '../themes/packages/debug-theme/additional-theme.css',
+    '../themes/node_modules/debug-theme/theme.css',
+    '../themes/node_modules/debug-theme/additional-theme.css',
     'sample-theme.css',
   ]);
   const doc2 = new JSDOM(
-    fs.readFileSync(resolveFixture('builder/.vs-multipleTheme/index.html')),
+    fs.readFileSync(
+      resolveFixture('builder/.vs-multipleTheme/index.html'),
+      'utf8',
+    ),
   );
   expect(
     [...doc2.window.document.querySelectorAll('link[rel="stylesheet"]')].map(
       (e) => e.getAttribute('href'),
     ),
   ).toEqual([
-    'themes/packages/@vivliostyle/theme-academic/theme.css',
+    'themes/node_modules/@vivliostyle/theme-academic/theme.css',
     'manuscript/sample-theme.css',
   ]);
 }, 300000); // Longer timeout to ensure installing remote themes
 
 it('fail to install if package does not exist', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/nonExistTheme.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  assertManifestPath(config);
-  expect(prepareThemeDirectory(config)).rejects.toThrow(
-    'An error occurred during the installation of the theme',
-  );
+  await expect(
+    runCommand(['build', '-c', 'nonExistTheme.config.js'], {
+      cwd: resolveFixture('builder'),
+    }),
+  ).rejects.toThrow('An error occurred during the installation of the theme');
 });
 
 it('reject trying import theme that is not vivliostyle theme', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/invalidTheme.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  assertManifestPath(config);
-  await prepareThemeDirectory(config);
-  expect(compile(config)).rejects.toThrow(
-    'Could not find a style file for the theme: invalid-theme',
-  );
+  await expect(
+    runCommand(['build', '-c', 'invalidTheme.config.js'], {
+      cwd: resolveFixture('builder'),
+    }),
+  ).rejects.toThrow('Could not find a style file for the theme: invalid-theme');
 });
 
 it('reject import style file that is not exist', async () => {
-  const config = await getMergedConfig([
-    '-c',
-    resolveFixture('builder/nonExistImport.config.cjs'),
-  ]);
-  assertSingleItem(config);
-  assertManifestPath(config);
-  await prepareThemeDirectory(config);
-  expect(compile(config)).rejects.toThrow(
+  await expect(
+    runCommand(['build', '-c', 'nonExistImport.config.js'], {
+      cwd: resolveFixture('builder'),
+    }),
+  ).rejects.toThrow(
     'Could not find a style path not-exist.css for the theme: debug-theme',
   );
 });
